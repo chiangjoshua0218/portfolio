@@ -1,0 +1,291 @@
+from IPython.display import HTML
+
+html_content = """
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>資產總覽</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>📊 資產總覽</h1>
+      <div class="header-actions">
+        <span id="last-updated" class="last-updated">尚未更新</span>
+        <label class="btn btn-secondary" title="載入 portfolio.json">
+          ↑ 匯入設定
+          <input type="file" id="import-file" accept=".json" style="display:none" onchange="importConfig(event)" />
+        </label>
+        <button class="btn btn-secondary" onclick="exportConfig()" title="儲存 portfolio.json">↓ 匯出設定</button>
+        <button id="refresh-btn" class="btn btn-primary" onclick="refreshAllPrices()">
+          <span class="btn-icon">↻</span> 更新股價
+        </button>
+      </div>
+    </header>
+
+    <!-- 總資產 -->
+    <div class="summary-cards">
+      <div class="card summary-card">
+        <div class="card-label">總資產</div>
+        <div class="card-value" id="total-value">—</div>
+      </div>
+      <div class="card summary-card">
+        <div class="card-label">台股</div>
+        <div class="card-value" id="tw-value">—</div>
+      </div>
+      <div class="card summary-card">
+        <div class="card-label">美股</div>
+        <div class="card-value" id="us-value">—</div>
+      </div>
+      <div class="card summary-card">
+        <div class="card-label">現金</div>
+        <div class="card-value" id="cash-value">—</div>
+      </div>
+      <div class="card summary-card">
+        <div class="card-label">債券</div>
+        <div class="card-value" id="bond-value">—</div>
+      </div>
+      <div class="card summary-card">
+        <div class="card-label">加密貨幣</div>
+        <div class="card-value" id="crypto-value">—</div>
+      </div>
+    </div>
+
+    <div class="main-content">
+      <!-- 圓餅圖 -->
+      <div class="card chart-card">
+        <h2>資產配置</h2>
+        <div class="chart-wrapper">
+          <canvas id="allocationChart"></canvas>
+        </div>
+        <div id="chart-legend" class="chart-legend"></div>
+      </div>
+
+      <!-- 持股列表 -->
+      <div class="holdings-section">
+        <!-- 目標配置 -->
+        <div class="card">
+          <div class="card-header">
+            <h2>目標配置</h2>
+            <button class="btn-collapse" onclick="toggleCard('body-target')">−</button>
+          </div>
+          <div class="card-body" id="body-target">
+          <div class="target-allocation">
+            <div class="target-inputs">
+              <div class="target-row">
+                <label>台股</label>
+                <div class="target-pct-input">
+                  <input type="number" id="target-tw_stock" min="0" max="100" step="1" placeholder="0" oninput="onTargetChange()">
+                  <span>%</span>
+                </div>
+              </div>
+              <div class="target-row">
+                <label>美股</label>
+                <div class="target-pct-input">
+                  <input type="number" id="target-us_stock" min="0" max="100" step="1" placeholder="0" oninput="onTargetChange()">
+                  <span>%</span>
+                </div>
+              </div>
+              <div class="target-row">
+                <label>現金</label>
+                <div class="target-pct-input">
+                  <input type="number" id="target-cash" min="0" max="100" step="1" placeholder="0" oninput="onTargetChange()">
+                  <span>%</span>
+                </div>
+              </div>
+              <div class="target-row">
+                <label>債券</label>
+                <div class="target-pct-input">
+                  <input type="number" id="target-bond" min="0" max="100" step="1" placeholder="0" oninput="onTargetChange()">
+                  <span>%</span>
+                </div>
+              </div>
+              <div class="target-row">
+                <label>加密貨幣</label>
+                <div class="target-pct-input">
+                  <input type="number" id="target-crypto" min="0" max="100" step="1" placeholder="0" oninput="onTargetChange()">
+                  <span>%</span>
+                </div>
+              </div>
+            </div>
+            <div id="target-total-bar" class="target-total-bar">合計：<span id="target-sum">0</span>%</div>
+          </div>
+          <div id="allocation-comparison" class="allocation-comparison"></div>
+          </div><!-- /card-body -->
+        </div>
+
+        <!-- 新增持股 -->
+        <div class="card">
+          <div class="card-header">
+            <h2>新增資產</h2>
+            <button class="btn-collapse" onclick="toggleCard('body-add')">−</button>
+          </div>
+          <div class="card-body" id="body-add">
+          <form id="add-holding-form" onsubmit="addHolding(event)">
+            <div class="form-row">
+              <div class="form-group">
+                <label>類別</label>
+                <select id="holding-category" onchange="onCategoryChange()">
+                  <option value="tw_stock">台股</option>
+                  <option value="us_stock">美股</option>
+                  <option value="cash">現金</option>
+                  <option value="bond">債券</option>
+                  <option value="crypto">加密貨幣</option>
+                </select>
+              </div>
+              <div class="form-group" id="symbol-group">
+                <label>代號 <span id="symbol-hint" class="hint">（如：2330、AAPL、BTC）</span></label>
+                <input type="text" id="holding-symbol" placeholder="股票/幣種代號" />
+              </div>
+              <div class="form-group">
+                <label id="qty-label">數量（股）</label>
+                <input type="number" id="holding-qty" placeholder="0" min="0" step="any" required />
+              </div>
+              <div class="form-group" id="manual-price-group" style="display:none">
+                <label>單價（TWD）</label>
+                <input type="number" id="holding-manual-price" placeholder="0" min="0" step="any" />
+              </div>
+              <div class="form-group">
+                <label>名稱（選填）</label>
+                <input type="text" id="holding-name" placeholder="自訂名稱" />
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group" id="currency-group">
+                <label>幣別</label>
+                <select id="holding-currency">
+                  <option value="TWD">TWD 新台幣</option>
+                  <option value="USD">USD 美元</option>
+                </select>
+              </div>
+            </div>
+            <button type="submit" class="btn btn-primary">新增</button>
+          </form>
+          </div><!-- /card-body -->
+        </div>
+
+        <!-- 持股清單 -->
+        <div class="card">
+          <div class="card-header">
+            <h2>持股清單</h2>
+            <div class="sort-controls">
+              <button id="sort-category-btn" class="btn-sort" onclick="setSort('category')">分類</button>
+              <button id="sort-value-btn"    class="btn-sort" onclick="setSort('value')">金額</button>
+            </div>
+            <button class="btn-collapse" onclick="toggleCard('body-holdings')">−</button>
+          </div>
+          <div class="card-body" id="body-holdings">
+          <div id="holdings-list">
+            <div class="empty-state">尚無持股，請新增資產</div>
+          </div>
+          </div><!-- /card-body -->
+        </div>
+
+        <!-- 新增的歷史資產紀錄區塊 -->
+        <div class="card">
+          <div class="card-header">
+            <h2>歷史資產紀錄</h2>
+            <button class="btn-collapse" onclick="toggleCard('body-history')">−</button>
+          </div>
+          <div class="card-body" id="body-history">
+          <div class="form-row">
+            <div class="form-group">
+              <label for="historical-year">年度</label>
+              <input type="number" id="historical-year" placeholder="2023" min="1900" max="2100" />
+            </div>
+            <div class="form-group">
+              <label for="historical-value">資產總值 (TWD)</label>
+              <input type="number" id="historical-value" placeholder="1000000" min="0" step="any" />
+            </div>
+          </div>
+          <button class="btn btn-primary" onclick="addHistoricalRecord()">新增紀錄</button>
+
+          <h3>資產趨勢圖</h3>
+          <div class="historical-chart-wrapper">
+            <canvas id="historicalAssetChart"></canvas>
+          </div>
+
+          <h3 style="margin-top:1.5rem">紀錄明細</h3>
+          <div id="historical-records-list" class="records-list">
+            <p class="empty-state">尚無紀錄</p>
+          </div>
+          </div><!-- /card-body -->
+        </div>
+      </div>
+    </div>
+
+    <!-- 匯率設定 -->
+    <div class="card settings-card">
+      <h2>匯率設定</h2>
+      <div class="form-row">
+        <div class="form-group">
+          <label>USD/TWD 匯率</label>
+          <input type="number" id="usd-rate" value="32" min="1" step="0.01" onchange="saveSettings()" />
+        </div>
+        <button class="btn btn-secondary" onclick="fetchExchangeRate()">自動取得匯率</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 編輯 Modal -->
+  <div id="edit-modal" class="modal" style="display:none">
+    <div class="modal-content">
+      <h3>編輯持股</h3>
+      <input type="hidden" id="edit-id" />
+      <div class="form-group">
+        <label>類別（可手動調整配置歸類）</label>
+        <select id="edit-category">
+          <option value="tw_stock">台股</option>
+          <option value="us_stock">美股</option>
+          <option value="cash">現金</option>
+          <option value="bond">債券</option>
+          <option value="crypto">加密貨幣</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>數量</label>
+        <input type="number" id="edit-qty" min="0" step="any" />
+      </div>
+      <div class="form-group" id="edit-manual-price-group">
+        <label>手動設定單價（留空則自動抓取）</label>
+        <input type="number" id="edit-manual-price" min="0" step="any" placeholder="自動" />
+      </div>
+      <div class="form-group">
+        <label>名稱</label>
+        <input type="text" id="edit-name" />
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-primary" onclick="saveEdit()">儲存</button>
+        <button class="btn btn-secondary" onclick="closeModal()">取消</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 首次設定 Modal -->
+  <div id="setup-modal" class="modal" style="display:none">
+    <div class="modal-content">
+      <h3>歡迎使用資產總覽</h3>
+      <p style="color:var(--text-muted);margin:0.5rem 0 1.5rem">請選擇設定檔位置，之後每次開啟都會自動讀取與儲存。</p>
+      <div class="modal-actions">
+        <button class="btn btn-primary" onclick="onCreateNewFile()">建立新設定檔</button>
+        <button class="btn btn-secondary" onclick="onOpenExistingFile()">開啟現有設定檔</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 需要授權橫幅 -->
+  <div id="permission-banner" style="display:none" class="permission-banner">
+    <span>需要重新授權才能讀取設定檔</span>
+    <button class="btn btn-primary" onclick="onRequestPermission()">授權讀取</button>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
+"""
+
+HTML(html_content)

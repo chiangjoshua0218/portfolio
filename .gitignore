@@ -1,0 +1,10 @@
+# 個人持股資料（不上傳）
+portfolio.json
+
+# macOS
+.DS_Store
+
+# 編輯器
+.vscode/
+.idea/
+.claude/
