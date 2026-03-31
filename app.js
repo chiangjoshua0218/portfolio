@@ -1,6 +1,6 @@
 // 在 https:// 環境（GitHub Pages 等）直連 Yahoo / TWSE 都會被 CORS 擋，直接跳過
 const IS_WEB_HOSTED = location.protocol === 'https:';
-const VERSION = '1.0.1';
+const VERSION = '1.0.2';
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
 const CATEGORY_LABELS = {
@@ -471,7 +471,7 @@ function parsePrice(val) {
   return (isFinite(n) && n > 0) ? n : null;
 }
 
-// 台股：優先用 TWSE mis 即時 API（含當天漲跌），再 fallback 到收盤資料
+// 台股：優先 Yahoo Finance（有 regularMarketPrice 即時價 + regularMarketPreviousClose 昨收）
 async function fetchTWStockPrice(holding) {
   const symbol = holding.symbol.replace(/\.TW$/i, '').toUpperCase();
 
@@ -492,33 +492,33 @@ async function fetchTWStockPrice(holding) {
     return null;
   }
 
-  // 1. TWSE mis 即時 API（優先：z=當盤成交價, y=昨收，最能反映當天漲跌）
+  // 1. Yahoo Finance（最準確：regularMarketPrice=即時/延遲報價, regularMarketPreviousClose=昨收）
+  //    上市用 .TW，上櫃用 .TWO，都試一次
+  for (const suffix of ['.TW', '.TWO']) {
+    await fetchViaYahoo(`${symbol}${suffix}`, holding, 'TWD');
+    if (holding.currentPrice) return;
+  }
+
+  // 2. TWSE mis 即時 API（z=當盤成交價, y=昨收）
+  //    注意：只有 z 有效時才用，z="-" 表示尚無成交，不採用
   for (const market of ['tse', 'otc']) {
     const misUrl = `https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=${market}_${symbol.toLowerCase()}.tw&json=1&delay=0`;
     try {
       const json = await tryFetch(misUrl);
       const item = json?.msgArray?.[0];
       if (!item) continue;
-      // z=當盤成交價（盤中）或最後成交價，y=昨收
-      const price    = parsePrice(item.z);
-      const prevClose = parsePrice(item.y);
-      if (price && prevClose) {
+      const price = parsePrice(item.z); // z="-" → null，不採用
+      const prev  = parsePrice(item.y);
+      if (price) {
         holding.currentPrice  = price;
         holding.currency      = 'TWD';
-        holding.previousClose = prevClose;
-        return;
-      }
-      // 盤前/收盤後 z="-"：用 y 當現價，不顯示漲跌
-      if (prevClose) {
-        holding.currentPrice = prevClose;
-        holding.currency     = 'TWD';
-        // 不設 previousClose → 不顯示漲跌幅（今日尚無成交）
+        if (prev) holding.previousClose = prev;
         return;
       }
     } catch {}
   }
 
-  // 2. TWSE Open API（上市，收盤後補充）
+  // 3. TWSE Open API（上市，收盤後備用）
   try {
     const data = await tryFetch(`https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY?stockNo=${symbol}`);
     if (Array.isArray(data) && data.length > 0) {
@@ -527,15 +527,17 @@ async function fetchTWStockPrice(holding) {
       if (price) {
         holding.currentPrice = price;
         holding.currency     = 'TWD';
-        const change = parseFloat((last.Change || '0').replace(/,/g, '').replace(/^\+/, ''));
-        const prev   = price - change;
-        if (prev > 0) holding.previousClose = prev;
+        const change = parseFloat((last.Change || '').replace(/,/g, '').replace(/^\+/, '') || '0');
+        if (!isNaN(change)) {
+          const prev = price - change;
+          if (prev > 0) holding.previousClose = prev;
+        }
         return;
       }
     }
   } catch {}
 
-  // 3. TPEX Open API（上櫃）
+  // 4. TPEX Open API（上櫃，收盤後備用）
   try {
     const data = await tryFetch('https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes');
     if (Array.isArray(data)) {
@@ -544,16 +546,15 @@ async function fetchTWStockPrice(holding) {
       if (price) {
         holding.currentPrice = price;
         holding.currency     = 'TWD';
-        const change = parseFloat((row.Change || '0').replace(/,/g, '').replace(/^\+/, ''));
-        const prev   = price - change;
-        if (prev > 0) holding.previousClose = prev;
+        const change = parseFloat((row.Change || '').replace(/,/g, '').replace(/^\+/, '') || '0');
+        if (!isNaN(change)) {
+          const prev = price - change;
+          if (prev > 0) holding.previousClose = prev;
+        }
         return;
       }
     }
   } catch {}
-
-  // 4. 最後：Yahoo Finance
-  await fetchViaYahoo(`${symbol}.TW`, holding, 'TWD');
 }
 
 // 美股逐一抓取
@@ -593,12 +594,13 @@ async function fetchViaYahoo(symbol, holding, currency) {
       try { const w = JSON.parse(text); data = w.contents ? JSON.parse(w.contents) : w; }
       catch { continue; }
       const meta  = data?.chart?.result?.[0]?.meta;
-      const price = meta?.regularMarketPrice ?? meta?.previousClose;
+      const price = meta?.regularMarketPrice ?? meta?.regularMarketPreviousClose ?? meta?.previousClose;
       if (price) {
         holding.currentPrice = price;
         holding.currency     = currency;
+        // 昨收：regularMarketPreviousClose 最準，fallback 到 previousClose
         const prev = meta?.regularMarketPreviousClose ?? meta?.previousClose;
-        if (prev && prev !== price) holding.previousClose = prev;
+        if (prev) holding.previousClose = prev; // 不加 prev !== price 判斷，零漲跌也要顯示
         return;
       }
     } catch {}
