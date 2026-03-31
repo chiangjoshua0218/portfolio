@@ -1,6 +1,6 @@
 // 在 https:// 環境（GitHub Pages 等）直連 Yahoo / TWSE 都會被 CORS 擋，直接跳過
 const IS_WEB_HOSTED = location.protocol === 'https:';
-const VERSION = '1.0.2';
+const VERSION = '1.0.3';
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
 const CATEGORY_LABELS = {
@@ -575,12 +575,12 @@ async function fetchViaYahoo(symbol, holding, currency) {
   // 數字開頭的代號補 .TW（台股被手動歸類為其他類別時）
   if (/^\d/.test(symbol) && !symbol.endsWith('.TW')) symbol = symbol + '.TW';
   const encoded  = encodeURIComponent(symbol);
-  const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encoded}?interval=1d&range=5d`;
+  const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encoded}?interval=1d&range=1d`;
   const proxies  = [
     // 直連只在 file:// 模式（--disable-web-security）下有意義，https 環境直接跳過
     ...(IS_WEB_HOSTED ? [] : [
       yahooUrl,
-      `https://query2.finance.yahoo.com/v8/finance/chart/${encoded}?interval=1d&range=5d`,
+      `https://query2.finance.yahoo.com/v8/finance/chart/${encoded}?interval=1d&range=1d`,
     ]),
     `https://corsproxy.io/?url=${encodeURIComponent(yahooUrl)}`,
     `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(yahooUrl)}`,
@@ -598,9 +598,9 @@ async function fetchViaYahoo(symbol, holding, currency) {
       if (price) {
         holding.currentPrice = price;
         holding.currency     = currency;
-        // 昨收：regularMarketPreviousClose 最準，fallback 到 previousClose
-        const prev = meta?.regularMarketPreviousClose ?? meta?.previousClose;
-        if (prev) holding.previousClose = prev; // 不加 prev !== price 判斷，零漲跌也要顯示
+        // 昨收：range=1d 時 chartPreviousClose 是昨天收盤，range=5d 是5天前（錯的）
+        const prev = meta?.chartPreviousClose ?? meta?.regularMarketPreviousClose ?? meta?.previousClose;
+        if (prev) holding.previousClose = prev;
         return;
       }
     } catch {}
