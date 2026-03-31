@@ -1,4 +1,4 @@
-const VERSION = '1.0.5';
+const VERSION = '1.0.6';
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
 const CATEGORY_LABELS = {
@@ -22,7 +22,6 @@ let holdings          = [];
 let historicalRecords = [];
 let holdingsSortBy    = 'none'; // 'none' | 'category' | 'value'
 let usdRate           = 32;
-let twelveDataKey     = '';
 let targetAllocations = { tw_stock: 0, us_stock: 0, cash: 0, bond: 0, crypto: 0 };
 let chart             = null;
 let historicalChart   = null;
@@ -116,7 +115,6 @@ async function init() {
 function applyConfig(config) {
   if (Array.isArray(config.holdings)) holdings = config.holdings;
   if (config.usdRate) usdRate = config.usdRate;
-  if (config.twelveDataKey) twelveDataKey = config.twelveDataKey;
   if (config.targetAllocations) targetAllocations = { ...targetAllocations, ...config.targetAllocations };
   if (Array.isArray(config.historicalRecords)) {
     // 遷移舊格式 { year, value } → 新格式 { date: "YYYY-12-31", value }
@@ -127,8 +125,6 @@ function applyConfig(config) {
     }).sort((a, b) => a.date.localeCompare(b.date));
   }
   document.getElementById('usd-rate').value = usdRate;
-  const keyEl = document.getElementById('twelve-data-key');
-  if (keyEl) keyEl.value = twelveDataKey;
 }
 
 function renderAll() {
@@ -232,15 +228,14 @@ function saveData() {
   localStorage.setItem('portfolio_targets', JSON.stringify(targetAllocations));
   localStorage.setItem('portfolio_historical_records', JSON.stringify(historicalRecords));
   if (fileHandle) {
-    writeConfigFile(fileHandle, { usdRate, twelveDataKey, holdings, targetAllocations, historicalRecords }).catch(e =>
+    writeConfigFile(fileHandle, { usdRate, holdings, targetAllocations, historicalRecords }).catch(e =>
       console.warn('寫入設定檔失敗:', e)
     );
   }
 }
 
 function saveSettings() {
-  usdRate       = parseFloat(document.getElementById('usd-rate').value) || 32;
-  twelveDataKey = (document.getElementById('twelve-data-key')?.value || '').trim();
+  usdRate = parseFloat(document.getElementById('usd-rate').value) || 32;
   saveData();
   updateSummary();
   renderCharts();
@@ -543,45 +538,15 @@ async function fetchTWStockPrice(holding) {
   } catch {}
 }
 
-// 美股抓取：有 Twelve Data key → 批次直連（CORS *）；否則逐一 Yahoo Finance（本機可用）
+// 美股抓取：Yahoo Finance 直連（本機 --disable-web-security 可用）
 async function fetchUSStocksBatch(usHoldings) {
   if (!usHoldings.length) return;
-
-  // 數字開頭（如 00757）路由到台股
-  const twLike = usHoldings.filter(h => /^\d/.test(h.symbol));
-  const usOnly = usHoldings.filter(h => !/^\d/.test(h.symbol));
-  for (const h of twLike) await fetchTWStockPrice(h);
-
-  if (!usOnly.length) return;
-
-  if (twelveDataKey) {
-    // Twelve Data 批次 API（有 CORS *，免費 800次/天）
-    // 一次最多 120 個 symbol，分批送出
-    const BATCH = 120;
-    for (let i = 0; i < usOnly.length; i += BATCH) {
-      const batch   = usOnly.slice(i, i + BATCH);
-      const symbols = batch.map(h => h.symbol).join(',');
-      try {
-        const res  = await fetch(`https://api.twelvedata.com/quote?symbol=${encodeURIComponent(symbols)}&apikey=${twelveDataKey}`);
-        if (!res.ok) continue;
-        const data = await res.json();
-        for (const h of batch) {
-          // 單個 symbol 直接回 object，多個 symbol 回 {SYM: object, ...}
-          const q = batch.length === 1 ? data : data[h.symbol];
-          if (!q || q.status === 'error' || q.code) continue;
-          const price = parseFloat(q.close);
-          const prev  = parseFloat(q.previous_close);
-          if (price) {
-            h.currentPrice = price;
-            h.currency     = 'USD';
-            if (prev) h.previousClose = prev;
-          }
-        }
-      } catch {}
+  for (const h of usHoldings) {
+    if (/^\d/.test(h.symbol)) {
+      await fetchTWStockPrice(h);
+    } else {
+      await fetchViaYahoo(h.symbol, h, 'USD');
     }
-  } else {
-    // Fallback：Yahoo Finance 直連（本機 --disable-web-security 可用；GitHub Pages 會 CORS 失敗）
-    for (const h of usOnly) await fetchViaYahoo(h.symbol, h, 'USD');
   }
 }
 

@@ -16,7 +16,7 @@ html_content = """
       <div class="header-title">
         <h1>📊 資產總覽</h1>
         <div class="version-info">
-          <span class="version-tag">v1.0.5</span>
+          <span class="version-tag">v1.0.6</span>
           <span class="author-tag">by joshchiang0218</span>
         </div>
       </div>
@@ -230,19 +230,13 @@ html_content = """
 
     <!-- 匯率設定 -->
     <div class="card settings-card">
-      <h2>設定</h2>
+      <h2>匯率設定</h2>
       <div class="form-row">
         <div class="form-group">
           <label>USD/TWD 匯率</label>
           <input type="number" id="usd-rate" value="32" min="1" step="0.01" onchange="saveSettings()" />
         </div>
         <button class="btn btn-secondary" onclick="fetchExchangeRate()">自動取得匯率</button>
-      </div>
-      <div class="form-row" style="margin-top:0.75rem">
-        <div class="form-group" style="flex:1">
-          <label>Twelve Data API Key <span class="hint">（<a href="https://twelvedata.com" target="_blank" style="color:#38bdf8">免費申請</a>，用於 GitHub Pages 上的美股即時報價）</span></label>
-          <input type="text" id="twelve-data-key" placeholder="輸入後美股可在 GitHub Pages 直接抓取" onchange="saveSettings()" style="font-family:monospace" />
-        </div>
       </div>
     </div>
   </div>
