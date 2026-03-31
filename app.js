@@ -500,22 +500,33 @@ async function fetchTWStockPrice(holding) {
     }
   } catch {}
 
-  // 3. Fallback：TWSE mis 即時 API（需要非 null origin）
+  // 3. Fallback：TWSE mis 即時 API（直連 + proxy 雙模式）
   for (const market of ['tse', 'otc']) {
-    try {
-      const res  = await fetch(`https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=${market}_${symbol.toLowerCase()}.tw&json=1&delay=0`);
-      const json = await res.json();
-      const item = json?.msgArray?.[0];
-      if (!item) continue;
-      const price = parsePrice(item.z) ?? parsePrice(item.y) ?? parsePrice(item.b) ?? parsePrice(item.a);
-      if (price) {
-        holding.currentPrice  = price;
-        holding.currency      = 'TWD';
-        const prev = parsePrice(item.y);
-        if (prev) holding.previousClose = prev;
-        return;
-      }
-    } catch {}
+    const misUrl = `https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=${market}_${symbol.toLowerCase()}.tw&json=1&delay=0`;
+    const attempts = [
+      misUrl,
+      `https://corsproxy.io/?url=${encodeURIComponent(misUrl)}`,
+      `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(misUrl)}`,
+    ];
+    for (const url of attempts) {
+      try {
+        const res  = await fetch(url);
+        if (!res.ok) continue;
+        const text = await res.text();
+        let json;
+        try { const w = JSON.parse(text); json = w.contents ? JSON.parse(w.contents) : w; } catch { continue; }
+        const item = json?.msgArray?.[0];
+        if (!item) continue;
+        const price = parsePrice(item.z) ?? parsePrice(item.y) ?? parsePrice(item.b) ?? parsePrice(item.a);
+        if (price) {
+          holding.currentPrice  = price;
+          holding.currency      = 'TWD';
+          const prev = parsePrice(item.y);
+          if (prev) holding.previousClose = prev;
+          return;
+        }
+      } catch {}
+    }
   }
 
   // 4. 最後：Yahoo Finance proxy
