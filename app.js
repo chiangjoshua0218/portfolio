@@ -466,32 +466,44 @@ function parsePrice(val) {
 async function fetchTWStockPrice(holding) {
   const symbol = holding.symbol.replace(/\.TW$/i, '').toUpperCase();
 
+  // 統一 proxy helper：根據環境決定用直連或 proxy
+  async function tryFetch(url) {
+    const urls = IS_WEB_HOSTED
+      ? [`https://corsproxy.io/?url=${encodeURIComponent(url)}`,
+         `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`]
+      : [url];
+    for (const u of urls) {
+      try {
+        const res = await fetch(u);
+        if (!res.ok) continue;
+        const text = await res.text();
+        try { const w = JSON.parse(text); return w.contents ? JSON.parse(w.contents) : w; } catch {}
+      } catch {}
+    }
+    return null;
+  }
+
   // 1. TWSE Open API（上市）
   try {
-    const res  = await fetch(`https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY?stockNo=${symbol}`);
-    if (res.ok) {
-      const data = await res.json();
-      if (Array.isArray(data) && data.length > 0) {
-        const last  = data[data.length - 1];
-        const price = parsePrice(last.ClosingPrice);
-        if (price) {
-          holding.currentPrice  = price;
-          holding.currency      = 'TWD';
-          // Change 欄位格式："+5.00" / "-3.50" / "0.00"
-          const prev = price - parseFloat(last.Change || 0);
-          if (prev > 0) holding.previousClose = prev;
-          return;
-        }
+    const data = await tryFetch(`https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY?stockNo=${symbol}`);
+    if (Array.isArray(data) && data.length > 0) {
+      const last  = data[data.length - 1];
+      const price = parsePrice(last.ClosingPrice);
+      if (price) {
+        holding.currentPrice = price;
+        holding.currency     = 'TWD';
+        const prev = price - parseFloat(last.Change || 0);
+        if (prev > 0) holding.previousClose = prev;
+        return;
       }
     }
   } catch {}
 
   // 2. TPEX Open API（上櫃）
   try {
-    const res  = await fetch('https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes');
-    if (res.ok) {
-      const data = await res.json();
-      const row  = data.find(d => d.SecuritiesCompanyCode === symbol);
+    const data = await tryFetch('https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes');
+    if (Array.isArray(data)) {
+      const row   = data.find(d => d.SecuritiesCompanyCode === symbol);
       const price = row ? parsePrice(row.Close) : null;
       if (price) {
         holding.currentPrice = price;
@@ -503,36 +515,25 @@ async function fetchTWStockPrice(holding) {
     }
   } catch {}
 
-  // 3. Fallback：TWSE mis 即時 API（直連 + proxy 雙模式）
+  // 3. TWSE mis 即時 API
   for (const market of ['tse', 'otc']) {
     const misUrl = `https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=${market}_${symbol.toLowerCase()}.tw&json=1&delay=0`;
-    const attempts = [
-      ...(IS_WEB_HOSTED ? [] : [misUrl]),
-      `https://corsproxy.io/?url=${encodeURIComponent(misUrl)}`,
-      `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(misUrl)}`,
-    ];
-    for (const url of attempts) {
-      try {
-        const res  = await fetch(url);
-        if (!res.ok) continue;
-        const text = await res.text();
-        let json;
-        try { const w = JSON.parse(text); json = w.contents ? JSON.parse(w.contents) : w; } catch { continue; }
-        const item = json?.msgArray?.[0];
-        if (!item) continue;
-        const price = parsePrice(item.z) ?? parsePrice(item.y) ?? parsePrice(item.b) ?? parsePrice(item.a);
-        if (price) {
-          holding.currentPrice  = price;
-          holding.currency      = 'TWD';
-          const prev = parsePrice(item.y);
-          if (prev) holding.previousClose = prev;
-          return;
-        }
-      } catch {}
-    }
+    try {
+      const json = await tryFetch(misUrl);
+      const item = json?.msgArray?.[0];
+      if (!item) continue;
+      const price = parsePrice(item.z) ?? parsePrice(item.y) ?? parsePrice(item.b) ?? parsePrice(item.a);
+      if (price) {
+        holding.currentPrice = price;
+        holding.currency     = 'TWD';
+        const prev = parsePrice(item.y);
+        if (prev) holding.previousClose = prev;
+        return;
+      }
+    } catch {}
   }
 
-  // 4. 最後：Yahoo Finance proxy
+  // 4. 最後：Yahoo Finance
   await fetchViaYahoo(`${symbol}.TW`, holding, 'TWD');
 }
 
