@@ -397,12 +397,63 @@ function renameProfile(pid) {
 function buildProfilePanelHTML(p) {
   const pid = p.id;
   return `
-  <div class="profile-subtotal">
-    <span class="profile-subtotal-label">小計</span>
-    <span class="profile-subtotal-value" id="subtotal-${pid}">—</span>
-    <span id="subtotal-change-${pid}" class="summary-change" style="font-size:0.8rem;margin-left:8px"></span>
+  <!-- Summary cards（與總覽相同版型）-->
+  <div class="summary-cards overview-summary">
+    <div class="card summary-card">
+      <div class="card-label">${escHtml(p.name)}</div>
+      <div class="card-value" id="subtotal-${pid}" style="color:#38bdf8">—</div>
+      <div id="subtotal-change-${pid}" class="summary-change"></div>
+    </div>
+    ${TARGET_CATS.map(c => `
+    <div class="card summary-card">
+      <div class="card-label">${CATEGORY_LABELS[c]}</div>
+      <div class="card-value" id="pcat-${c}-${pid}">—</div>
+    </div>`).join('')}
   </div>
-  <!-- Target allocation card -->
+
+  <!-- 圓餅圖 + 歷史紀錄（並排，與總覽相同）-->
+  <div class="main-content">
+    <div class="card chart-card">
+      <h2>資產配置</h2>
+      <div class="chart-wrapper">
+        <canvas id="profileChart-${pid}"></canvas>
+      </div>
+      <div id="profile-chart-legend-${pid}" class="chart-legend"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h2>歷史資產紀錄</h2>
+        <button class="btn-collapse" onclick="toggleCard('body-phist-${pid}')">−</button>
+      </div>
+      <div class="card-body" id="body-phist-${pid}">
+        <div class="history-actions">
+          <button class="btn btn-primary" onclick="saveProfileAssets('${pid}')">📌 記錄今日資產</button>
+        </div>
+        <div class="form-row" style="margin-top:12px">
+          <div class="form-group">
+            <label>日期</label>
+            <input type="date" id="phist-date-${pid}" />
+          </div>
+          <div class="form-group">
+            <label>資產總值 (TWD)</label>
+            <input type="number" id="phist-value-${pid}" placeholder="1000000" min="0" step="any" />
+          </div>
+        </div>
+        <button class="btn btn-secondary" onclick="addProfileHistoricalRecord('${pid}')">手動新增</button>
+        <h3 style="margin-top:1.5rem">資產趨勢圖</h3>
+        <div class="historical-chart-wrapper">
+          <canvas id="profileHistChart-${pid}"></canvas>
+        </div>
+        <h3 style="margin-top:1.5rem">紀錄明細</h3>
+        <div id="phist-list-${pid}" class="records-list">
+          <p class="empty-state">尚無紀錄</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 目標配置 -->
   <div class="card">
     <div class="card-header">
       <h2>目標配置</h2>
@@ -425,7 +476,8 @@ function buildProfilePanelHTML(p) {
       <div id="allocation-comparison-${pid}" class="allocation-comparison"></div>
     </div>
   </div>
-  <!-- Add holding form -->
+
+  <!-- 新增資產 -->
   <div class="card">
     <div class="card-header">
       <h2>新增資產</h2>
@@ -474,7 +526,8 @@ function buildProfilePanelHTML(p) {
       </form>
     </div>
   </div>
-  <!-- Holdings list -->
+
+  <!-- 持股清單 -->
   <div class="card">
     <div class="card-header">
       <h2>持股清單</h2>
@@ -487,50 +540,6 @@ function buildProfilePanelHTML(p) {
     <div class="card-body" id="body-holdings-${pid}">
       <div id="holdings-list-${pid}">
         <div class="empty-state">尚無持股，請新增資產</div>
-      </div>
-    </div>
-  </div>
-  <!-- Profile chart -->
-  <div class="card chart-card">
-    <div class="card-header">
-      <h2>資產配置</h2>
-      <button class="btn-collapse" onclick="toggleCard('body-chart-${pid}')">−</button>
-    </div>
-    <div class="card-body" id="body-chart-${pid}">
-      <div class="chart-wrapper">
-        <canvas id="profileChart-${pid}"></canvas>
-      </div>
-      <div id="profile-chart-legend-${pid}" class="chart-legend"></div>
-    </div>
-  </div>
-  <!-- Profile historical records -->
-  <div class="card">
-    <div class="card-header">
-      <h2>歷史資產紀錄</h2>
-      <button class="btn-collapse" onclick="toggleCard('body-phist-${pid}')">−</button>
-    </div>
-    <div class="card-body" id="body-phist-${pid}">
-      <div class="history-actions">
-        <button class="btn btn-primary" onclick="saveProfileAssets('${pid}')">📌 記錄今日資產</button>
-      </div>
-      <div class="form-row" style="margin-top:12px">
-        <div class="form-group">
-          <label>日期</label>
-          <input type="date" id="phist-date-${pid}" />
-        </div>
-        <div class="form-group">
-          <label>資產總值 (TWD)</label>
-          <input type="number" id="phist-value-${pid}" placeholder="1000000" min="0" step="any" />
-        </div>
-      </div>
-      <button class="btn btn-secondary" onclick="addProfileHistoricalRecord('${pid}')">手動新增</button>
-      <h3 style="margin-top:1.5rem">資產趨勢圖</h3>
-      <div class="historical-chart-wrapper">
-        <canvas id="profileHistChart-${pid}"></canvas>
-      </div>
-      <h3 style="margin-top:1.5rem">紀錄明細</h3>
-      <div id="phist-list-${pid}" class="records-list">
-        <p class="empty-state">尚無紀錄</p>
       </div>
     </div>
   </div>`;
@@ -578,12 +587,22 @@ function renderProfilePanel(pid) {
   const p = getProfile(pid);
   if (!p) return;
 
-  // 更新小計
-  const subtotal = p.holdings.reduce((s, h) => s + getHoldingValueTWD(h), 0);
+  // 各類別加總
+  const catTotals = { tw_stock: 0, us_stock: 0, cash: 0, bond: 0, crypto: 0 };
+  p.holdings.forEach(h => { catTotals[h.category] = (catTotals[h.category] || 0) + getHoldingValueTWD(h); });
+  const subtotal = Object.values(catTotals).reduce((a, b) => a + b, 0);
+
+  // 小計 card
   const subtotalEl = document.getElementById(`subtotal-${pid}`);
   if (subtotalEl) subtotalEl.textContent = formatTWD(subtotal);
 
-  // 今日小計變化
+  // 各類別 card
+  TARGET_CATS.forEach(c => {
+    const el = document.getElementById(`pcat-${c}-${pid}`);
+    if (el) el.textContent = formatTWD(catTotals[c]);
+  });
+
+  // 今日變化
   let dayChange = 0, hasChange = false;
   p.holdings.forEach(h => {
     if (h.currentPrice && h.previousClose && h.category !== 'cash') {
@@ -604,7 +623,7 @@ function renderProfilePanel(pid) {
     }
   }
 
-  // 填入目標配置
+  // 目標配置
   TARGET_CATS.forEach(c => {
     const el = document.getElementById(`target-${c}-${pid}`);
     if (el) el.value = p.targetAllocations[c] || '';
