@@ -1,3 +1,6 @@
+// 在 https:// 環境（GitHub Pages 等）直連 Yahoo / TWSE 都會被 CORS 擋，直接跳過
+const IS_WEB_HOSTED = location.protocol === 'https:';
+
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
 const CATEGORY_LABELS = {
   tw_stock: '台股',
@@ -504,7 +507,7 @@ async function fetchTWStockPrice(holding) {
   for (const market of ['tse', 'otc']) {
     const misUrl = `https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=${market}_${symbol.toLowerCase()}.tw&json=1&delay=0`;
     const attempts = [
-      misUrl,
+      ...(IS_WEB_HOSTED ? [] : [misUrl]),
       `https://corsproxy.io/?url=${encodeURIComponent(misUrl)}`,
       `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(misUrl)}`,
     ];
@@ -533,11 +536,11 @@ async function fetchTWStockPrice(holding) {
   await fetchViaYahoo(`${symbol}.TW`, holding, 'TWD');
 }
 
-// 美股逐一抓取（v7 已失效，直接用 v8 chart API）
+// 美股逐一抓取
 async function fetchUSStocksBatch(usHoldings) {
   if (!usHoldings.length) return;
   for (const h of usHoldings) {
-    // 數字開頭 = 台股格式（如 00757），補 .TW 用台股路徑抓
+    // 數字開頭 = 台股格式（如 00757），用台股路徑抓
     if (/^\d/.test(h.symbol)) {
       await fetchTWStockPrice(h);
     } else {
@@ -553,11 +556,13 @@ async function fetchViaYahoo(symbol, holding, currency) {
   const encoded  = encodeURIComponent(symbol);
   const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encoded}?interval=1d&range=5d`;
   const proxies  = [
-    yahooUrl,  // 直連
-    `https://query2.finance.yahoo.com/v8/finance/chart/${encoded}?interval=1d&range=5d`,
+    // 直連只在 file:// 模式（--disable-web-security）下有意義，https 環境直接跳過
+    ...(IS_WEB_HOSTED ? [] : [
+      yahooUrl,
+      `https://query2.finance.yahoo.com/v8/finance/chart/${encoded}?interval=1d&range=5d`,
+    ]),
     `https://corsproxy.io/?url=${encodeURIComponent(yahooUrl)}`,
     `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(yahooUrl)}`,
-    `https://api.allorigins.win/get?url=${encodeURIComponent(yahooUrl)}`,
   ];
   for (const proxyUrl of proxies) {
     try {
