@@ -1,4 +1,5 @@
-const VERSION = '1.0.6';
+const VERSION = '1.0.7';
+const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
 const CATEGORY_LABELS = {
@@ -469,39 +470,39 @@ function parsePrice(val) {
   return (isFinite(n) && n > 0) ? n : null;
 }
 
-// 台股：直接呼叫 TWSE/TPEX 官方 API（不走 proxy）
-// 優先順序：MIS 即時 → TWSE 收盤（CORS OK）→ TPEX 收盤
+// 台股：本機直連（MIS 即時 → TWSE afterTrading → TPEX）
+//       GitHub Pages：直接用 TWSE afterTrading（有 CORS *，MIS 沒有 CORS 跳過）
 async function fetchTWStockPrice(holding) {
   const symbol = holding.symbol.replace(/\.TW$/i, '').toUpperCase();
 
-  // 1. TWSE MIS 即時 API（z=當盤成交價, y=昨收）
-  //    直連，本地 --disable-web-security 可用；GitHub Pages 會被 CORS 擋（靜默跳過）
-  for (const market of ['tse', 'otc']) {
-    try {
-      const res  = await fetch(`https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=${market}_${symbol.toLowerCase()}.tw&json=1&delay=0`);
-      if (!res.ok) continue;
-      const json = await res.json();
-      const item = json?.msgArray?.[0];
-      if (!item) continue;
-      const price = parsePrice(item.z);
-      const prev  = parsePrice(item.y);
-      if (price) {
-        holding.currentPrice  = price;
-        holding.currency      = 'TWD';
-        if (prev) holding.previousClose = prev;
-        return;
-      }
-    } catch {}
+  // 1. TWSE MIS 即時 API（本機 --disable-web-security 可用；GitHub Pages 無 CORS 跳過）
+  if (!IS_GITHUB_PAGES) {
+    for (const market of ['tse', 'otc']) {
+      try {
+        const res  = await fetch(`https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=${market}_${symbol.toLowerCase()}.tw&json=1&delay=0`);
+        if (!res.ok) continue;
+        const json = await res.json();
+        const item = json?.msgArray?.[0];
+        if (!item) continue;
+        const price = parsePrice(item.z);
+        const prev  = parsePrice(item.y);
+        if (price) {
+          holding.currentPrice  = price;
+          holding.currency      = 'TWD';
+          if (prev) holding.previousClose = prev;
+          return;
+        }
+      } catch {}
+    }
   }
 
-  // 2. TWSE afterTrading（有 CORS *，上市+上櫃都可用，回傳當天收盤）
+  // 2. TWSE afterTrading（有 CORS *，GitHub Pages + 本機都可用，回傳當天收盤）
   try {
     const res  = await fetch(`https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?stockNo=${symbol}&response=json`);
     if (res.ok) {
       const json = await res.json();
       if (json.stat === 'OK' && Array.isArray(json.data) && json.data.length > 0) {
         const last   = json.data[json.data.length - 1];
-        // fields: [日期, 成交股數, 成交金額, 開盤價, 最高價, 最低價, 收盤價, 漲跌價差, 成交筆數, 註記]
         const price  = parsePrice(last[6]);
         const change = parseFloat((last[7] || '').replace(/,/g, '') || '0');
         if (price) {
@@ -517,28 +518,30 @@ async function fetchTWStockPrice(holding) {
     }
   } catch {}
 
-  // 3. TPEX 收盤 API（上櫃；直連，本地可用）
-  try {
-    const res  = await fetch('https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes');
-    if (res.ok) {
-      const data  = await res.json();
-      const row   = data.find(d => d.SecuritiesCompanyCode === symbol);
-      const price = row ? parsePrice(row.Close) : null;
-      if (price) {
-        holding.currentPrice = price;
-        holding.currency     = 'TWD';
-        const change = parseFloat((row.Change || '').replace(/,/g, '') || '0');
-        if (!isNaN(change)) {
-          const prev = price - change;
-          if (prev > 0) holding.previousClose = prev;
+  // 3. TPEX 收盤 API（上櫃備用；本機直連）
+  if (!IS_GITHUB_PAGES) {
+    try {
+      const res  = await fetch('https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes');
+      if (res.ok) {
+        const data  = await res.json();
+        const row   = data.find(d => d.SecuritiesCompanyCode === symbol);
+        const price = row ? parsePrice(row.Close) : null;
+        if (price) {
+          holding.currentPrice = price;
+          holding.currency     = 'TWD';
+          const change = parseFloat((row.Change || '').replace(/,/g, '') || '0');
+          if (!isNaN(change)) {
+            const prev = price - change;
+            if (prev > 0) holding.previousClose = prev;
+          }
+          return;
         }
-        return;
       }
-    }
-  } catch {}
+    } catch {}
+  }
 }
 
-// 美股抓取：Yahoo Finance 直連（本機 --disable-web-security 可用）
+// 美股抓取
 async function fetchUSStocksBatch(usHoldings) {
   if (!usHoldings.length) return;
   for (const h of usHoldings) {
@@ -550,22 +553,30 @@ async function fetchUSStocksBatch(usHoldings) {
   }
 }
 
-// Yahoo Finance chart API（美股直連，不走 proxy）
+// Yahoo Finance chart API
+// 本機：直連 query1/query2
+// GitHub Pages：透過 corsproxy.io（從真實瀏覽器有 CORS，測試確認可用）
 async function fetchViaYahoo(symbol, holding, currency) {
   if (/^\d/.test(symbol) && !symbol.endsWith('.TW')) symbol = symbol + '.TW';
-  const encoded = encodeURIComponent(symbol);
-  // query1 / query2 兩個 host 都試，任一成功即回傳
-  for (const host of ['query1', 'query2']) {
+  const encoded   = encodeURIComponent(symbol);
+  const yahooUrl  = `https://query1.finance.yahoo.com/v8/finance/chart/${encoded}?interval=1d&range=1d`;
+  const urls = IS_GITHUB_PAGES
+    ? [`https://corsproxy.io/?url=${encodeURIComponent(yahooUrl)}`]
+    : [yahooUrl, `https://query2.finance.yahoo.com/v8/finance/chart/${encoded}?interval=1d&range=1d`];
+
+  for (const url of urls) {
     try {
-      const res = await fetch(`https://${host}.finance.yahoo.com/v8/finance/chart/${encoded}?interval=1d&range=1d`);
+      const res = await fetch(url);
       if (!res.ok) continue;
-      const data = await res.json();
+      const text = await res.text();
+      let data;
+      try { const w = JSON.parse(text); data = w.contents ? JSON.parse(w.contents) : w; }
+      catch { continue; }
       const meta  = data?.chart?.result?.[0]?.meta;
       const price = meta?.regularMarketPrice ?? meta?.chartPreviousClose;
       if (price) {
         holding.currentPrice = price;
         holding.currency     = currency;
-        // range=1d 的 chartPreviousClose = 昨收（正確）
         const prev = meta?.chartPreviousClose ?? meta?.previousClose;
         if (prev) holding.previousClose = prev;
         return;
