@@ -1,4 +1,4 @@
-const VERSION = '1.0.7';
+const VERSION = '2.0.0';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -18,16 +18,27 @@ const CATEGORY_COLORS = {
   crypto:   '#f97316',
 };
 
+const TARGET_CATS = ['tw_stock', 'us_stock', 'cash', 'bond', 'crypto'];
+const CATEGORY_ORDER = { tw_stock: 0, us_stock: 1, bond: 2, cash: 3, crypto: 4 };
+
 // ─── 狀態 ────────────────────────────────────────────────────────────────────
-let holdings          = [];
+let profiles          = []; // { id, name, holdings, targetAllocations }
+let activeProfileId   = 'overview';
 let historicalRecords = [];
-let holdingsSortBy    = 'none'; // 'none' | 'category' | 'value'
 let usdRate           = 32;
-let targetAllocations = { tw_stock: 0, us_stock: 0, cash: 0, bond: 0, crypto: 0 };
 let chart             = null;
 let historicalChart   = null;
+let holdingsSortBy    = {}; // { [profileId]: 'none'|'category'|'value' }
 let fileHandle        = null;
 const FILE_API_SUPPORTED = 'showOpenFilePicker' in window;
+
+// ─── Profile helpers ──────────────────────────────────────────────────────────
+function getProfile(id) {
+  return profiles.find(p => p.id === id);
+}
+function getActiveProfile() {
+  return getProfile(activeProfileId);
+}
 
 // ─── IndexedDB（儲存 file handle）────────────────────────────────────────────
 async function dbOpen() {
@@ -71,7 +82,6 @@ async function writeConfigFile(handle, data) {
   await writable.close();
 }
 
-// 啟動時檢查 IndexedDB 內是否有已存的 file handle
 async function initFileSystem() {
   if (!FILE_API_SUPPORTED) return 'not-supported';
   try {
@@ -107,42 +117,41 @@ async function init() {
     showSetupModal();
     renderAll();
   } else {
-    // File System API 不支援 → 舊版 import/export 模式
     loadFromLocalStorage();
     renderAll();
   }
 }
 
 function applyConfig(config) {
-  if (Array.isArray(config.holdings)) holdings = config.holdings;
-  if (config.usdRate) usdRate = config.usdRate;
-  if (config.targetAllocations) targetAllocations = { ...targetAllocations, ...config.targetAllocations };
-  if (Array.isArray(config.historicalRecords)) {
-    // 遷移舊格式 { year, value } → 新格式 { date: "YYYY-12-31", value }
-    historicalRecords = config.historicalRecords.map(r => {
+  if (config.version === 2) {
+    profiles          = config.profiles || [];
+    historicalRecords = config.historicalRecords || [];
+    usdRate           = config.usdRate || 32;
+  } else {
+    // v1 migration: wrap existing data into single profile
+    profiles = [{
+      id:               'p1',
+      name:             '我的資產',
+      holdings:         config.holdings || [],
+      targetAllocations: config.targetAllocations || { tw_stock: 0, us_stock: 0, cash: 0, bond: 0, crypto: 0 },
+    }];
+    historicalRecords = (config.historicalRecords || []).map(r => {
       if (r.date) return r;
       if (typeof r.year === 'number') return { date: `${r.year}-12-31`, value: r.value };
       return r;
     }).sort((a, b) => a.date.localeCompare(b.date));
+    usdRate = config.usdRate || 32;
   }
-  document.getElementById('usd-rate').value = usdRate;
+  profiles.forEach(p => {
+    holdingsSortBy[p.id] = holdingsSortBy[p.id] || 'none';
+    if (!p.targetAllocations) p.targetAllocations = { tw_stock: 0, us_stock: 0, cash: 0, bond: 0, crypto: 0 };
+  });
 }
 
 function renderAll() {
-  renderHoldings();
-  updateSummary();
-  renderCharts();
-  // 填入目標配置輸入框
-  const cats = ['tw_stock', 'us_stock', 'cash', 'bond', 'crypto'];
-  cats.forEach(c => {
-    const el = document.getElementById(`target-${c}`);
-    if (el) el.value = targetAllocations[c] || '';
-  });
-  updateTargetTotalBar();
-  renderAllocationComparison();
-  renderHistoricalRecordsList();
-  renderHistoricalChart();
-  updateGrowthRates();
+  renderTabs();
+  renderOverview();
+  renderProfilePanels();
   document.getElementById('usd-rate').value = usdRate;
 }
 
@@ -155,7 +164,8 @@ async function onCreateNewFile() {
     });
     fileHandle = handle;
     await dbSet('fileHandle', handle);
-    await writeConfigFile(handle, { usdRate, holdings });
+    const config = { version: 2, usdRate, historicalRecords, profiles };
+    await writeConfigFile(handle, config);
     hideSetupModal();
   } catch (e) {
     if (e.name !== 'AbortError') alert('建立設定檔失敗：' + e.message);
@@ -200,51 +210,52 @@ async function onRequestPermission() {
 }
 
 // ─── UI helpers ───────────────────────────────────────────────────────────────
-function showSetupModal()     { document.getElementById('setup-modal').style.display      = 'flex'; }
-function hideSetupModal()     { document.getElementById('setup-modal').style.display      = 'none'; }
+function showSetupModal()      { document.getElementById('setup-modal').style.display      = 'flex'; }
+function hideSetupModal()      { document.getElementById('setup-modal').style.display      = 'none'; }
 function showPermissionBanner(){ document.getElementById('permission-banner').style.display = 'flex'; }
 function hidePermissionBanner(){ document.getElementById('permission-banner').style.display = 'none'; }
 
-// ─── localStorage（備用 / 舊版）──────────────────────────────────────────────
+// ─── localStorage ─────────────────────────────────────────────────────────────
 function loadFromLocalStorage() {
   try {
-    const raw = localStorage.getItem('portfolio_holdings');
-    if (raw) holdings = JSON.parse(raw);
-  } catch {}
-  const rate = localStorage.getItem('portfolio_usd_rate');
-  if (rate) usdRate = parseFloat(rate);
-  try {
-    const targets = localStorage.getItem('portfolio_targets');
-    if (targets) targetAllocations = { ...targetAllocations, ...JSON.parse(targets) };
-  } catch {}
-  try {
-    const history = localStorage.getItem('portfolio_historical_records');
-    if (history) historicalRecords = JSON.parse(history);
+    const raw = localStorage.getItem('portfolio_v2');
+    if (raw) {
+      applyConfig(JSON.parse(raw));
+      return;
+    }
+    // 嘗試讀取 v1 格式
+    const v1Holdings = localStorage.getItem('portfolio_holdings');
+    if (v1Holdings) {
+      const config = { holdings: JSON.parse(v1Holdings) };
+      const rate    = localStorage.getItem('portfolio_usd_rate');
+      if (rate) config.usdRate = parseFloat(rate);
+      const targets = localStorage.getItem('portfolio_targets');
+      if (targets) config.targetAllocations = JSON.parse(targets);
+      const history = localStorage.getItem('portfolio_historical_records');
+      if (history) config.historicalRecords = JSON.parse(history);
+      applyConfig(config);
+    }
   } catch {}
 }
 
 function saveData() {
-  localStorage.setItem('portfolio_holdings', JSON.stringify(holdings));
-  localStorage.setItem('portfolio_usd_rate', usdRate.toString());
-  localStorage.setItem('portfolio_targets', JSON.stringify(targetAllocations));
-  localStorage.setItem('portfolio_historical_records', JSON.stringify(historicalRecords));
+  const config = { version: 2, usdRate, historicalRecords, profiles };
+  localStorage.setItem('portfolio_v2', JSON.stringify(config));
   if (fileHandle) {
-    writeConfigFile(fileHandle, { usdRate, holdings, targetAllocations, historicalRecords }).catch(e =>
-      console.warn('寫入設定檔失敗:', e)
-    );
+    writeConfigFile(fileHandle, config).catch(e => console.warn('寫入設定檔失敗:', e));
   }
 }
 
 function saveSettings() {
   usdRate = parseFloat(document.getElementById('usd-rate').value) || 32;
   saveData();
-  updateSummary();
-  renderCharts();
+  renderOverview();
+  renderAllProfilePanels();
 }
 
-// ─── 匯出 / 匯入設定檔（手動備份）────────────────────────────────────────────
+// ─── 匯出 / 匯入設定檔 ────────────────────────────────────────────────────────
 function exportConfig() {
-  const config = { usdRate, holdings, targetAllocations, historicalRecords };
+  const config = { version: 2, usdRate, historicalRecords, profiles };
   const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -263,7 +274,8 @@ function importConfig(event) {
       applyConfig(config);
       saveData();
       renderAll();
-      alert(`已載入 ${holdings.length} 筆資產`);
+      const totalHoldings = profiles.reduce((s, p) => s + p.holdings.length, 0);
+      alert(`已載入 ${profiles.length} 個帳戶，共 ${totalHoldings} 筆資產`);
     } catch {
       alert('設定檔格式錯誤，請確認是正確的 portfolio.json');
     }
@@ -272,15 +284,313 @@ function importConfig(event) {
   event.target.value = '';
 }
 
+// ─── Tab 函式 ────────────────────────────────────────────────────────────────
+function renderTabs() {
+  const bar = document.getElementById('tab-bar');
+  bar.innerHTML = `
+    <div class="tabs-scroll">
+      <div class="tab ${activeProfileId === 'overview' ? 'active' : ''}" onclick="switchTab('overview')">總覽</div>
+      ${profiles.map(p => `
+        <div class="tab ${activeProfileId === p.id ? 'active' : ''}" onclick="switchTab('${p.id}')">
+          <span class="tab-name" ondblclick="renameProfile('${p.id}')">${escHtml(p.name)}</span>
+          <button class="tab-close" onclick="event.stopPropagation();deleteProfile('${p.id}')" title="刪除">×</button>
+        </div>`).join('')}
+      <button class="tab-add" onclick="addProfile()" title="新增">＋</button>
+    </div>`;
+}
+
+function switchTab(id) {
+  activeProfileId = id;
+  renderTabs();
+  const overviewPanel = document.getElementById('panel-overview');
+  if (id === 'overview') {
+    overviewPanel.style.display = '';
+    document.querySelectorAll('.panel-profile').forEach(el => el.style.display = 'none');
+  } else {
+    overviewPanel.style.display = 'none';
+    document.querySelectorAll('.panel-profile').forEach(el => el.style.display = 'none');
+    const panel = document.getElementById(`panel-${id}`);
+    if (panel) {
+      panel.style.display = '';
+      renderProfilePanel(id);
+    }
+  }
+}
+
+function addProfile() {
+  const name = prompt('請輸入名稱：');
+  if (!name?.trim()) return;
+  const id = 'p' + Date.now();
+  profiles.push({
+    id,
+    name: name.trim(),
+    holdings: [],
+    targetAllocations: { tw_stock: 0, us_stock: 0, cash: 0, bond: 0, crypto: 0 },
+  });
+  holdingsSortBy[id] = 'none';
+  saveData();
+  renderProfilePanels();
+  switchTab(id);
+}
+
+function deleteProfile(id) {
+  const p = getProfile(id);
+  if (!p) return;
+  if (!confirm(`確定要刪除「${p.name}」的所有資料？`)) return;
+  profiles = profiles.filter(pr => pr.id !== id);
+  delete holdingsSortBy[id];
+  const panel = document.getElementById(`panel-${id}`);
+  if (panel) panel.remove();
+  saveData();
+  renderTabs();
+  switchTab('overview');
+}
+
+function renameProfile(pid) {
+  const p = getProfile(pid);
+  if (!p) return;
+  const newName = prompt('新名稱：', p.name);
+  if (!newName?.trim() || newName.trim() === p.name) return;
+  p.name = newName.trim();
+  saveData();
+  renderTabs();
+}
+
+// ─── Profile Panel HTML 生成 ──────────────────────────────────────────────────
+function buildProfilePanelHTML(p) {
+  const pid = p.id;
+  return `
+  <div class="profile-subtotal">
+    <span class="profile-subtotal-label">小計</span>
+    <span class="profile-subtotal-value" id="subtotal-${pid}">—</span>
+    <span id="subtotal-change-${pid}" class="summary-change" style="font-size:0.8rem;margin-left:8px"></span>
+  </div>
+  <!-- Target allocation card -->
+  <div class="card">
+    <div class="card-header">
+      <h2>目標配置</h2>
+      <button class="btn-collapse" onclick="toggleCard('body-target-${pid}')">−</button>
+    </div>
+    <div class="card-body" id="body-target-${pid}">
+      <div class="target-allocation">
+        <div class="target-inputs">
+          ${TARGET_CATS.map(c => `
+          <div class="target-row">
+            <label>${CATEGORY_LABELS[c]}</label>
+            <div class="target-pct-input">
+              <input type="number" id="target-${c}-${pid}" min="0" max="100" step="1" placeholder="0" oninput="onTargetChange('${pid}')">
+              <span>%</span>
+            </div>
+          </div>`).join('')}
+        </div>
+        <div class="target-total-bar" id="target-total-bar-${pid}">合計：<span id="target-sum-${pid}">0</span>%</div>
+      </div>
+      <div id="allocation-comparison-${pid}" class="allocation-comparison"></div>
+    </div>
+  </div>
+  <!-- Add holding form -->
+  <div class="card">
+    <div class="card-header">
+      <h2>新增資產</h2>
+      <button class="btn-collapse" onclick="toggleCard('body-add-${pid}')">−</button>
+    </div>
+    <div class="card-body" id="body-add-${pid}">
+      <form id="add-holding-form-${pid}" onsubmit="addHolding(event, '${pid}')">
+        <div class="form-row">
+          <div class="form-group">
+            <label>類別</label>
+            <select id="holding-category-${pid}" onchange="onCategoryChange('${pid}')">
+              <option value="tw_stock">台股</option>
+              <option value="us_stock">美股</option>
+              <option value="cash">現金</option>
+              <option value="bond">債券</option>
+              <option value="crypto">加密貨幣</option>
+            </select>
+          </div>
+          <div class="form-group" id="symbol-group-${pid}">
+            <label>代號 <span id="symbol-hint-${pid}" class="hint">（如：2330、AAPL、BTC）</span></label>
+            <input type="text" id="holding-symbol-${pid}" placeholder="股票/幣種代號" />
+          </div>
+          <div class="form-group">
+            <label id="qty-label-${pid}">數量（股）</label>
+            <input type="number" id="holding-qty-${pid}" placeholder="0" min="0" step="any" required />
+          </div>
+          <div class="form-group" id="manual-price-group-${pid}" style="display:none">
+            <label>單價（TWD）</label>
+            <input type="number" id="holding-manual-price-${pid}" placeholder="0" min="0" step="any" />
+          </div>
+          <div class="form-group">
+            <label>名稱（選填）</label>
+            <input type="text" id="holding-name-${pid}" placeholder="自訂名稱" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group" id="currency-group-${pid}">
+            <label>幣別</label>
+            <select id="holding-currency-${pid}">
+              <option value="TWD">TWD 新台幣</option>
+              <option value="USD">USD 美元</option>
+            </select>
+          </div>
+        </div>
+        <button type="submit" class="btn btn-primary">新增</button>
+      </form>
+    </div>
+  </div>
+  <!-- Holdings list -->
+  <div class="card">
+    <div class="card-header">
+      <h2>持股清單</h2>
+      <div class="sort-controls">
+        <button id="sort-category-btn-${pid}" class="btn-sort" onclick="setSort('${pid}','category')">分類</button>
+        <button id="sort-value-btn-${pid}" class="btn-sort" onclick="setSort('${pid}','value')">金額</button>
+      </div>
+      <button class="btn-collapse" onclick="toggleCard('body-holdings-${pid}')">−</button>
+    </div>
+    <div class="card-body" id="body-holdings-${pid}">
+      <div id="holdings-list-${pid}">
+        <div class="empty-state">尚無持股，請新增資產</div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderProfilePanels() {
+  const container = document.getElementById('profile-panels');
+  // 清除舊的 panels
+  container.innerHTML = '';
+
+  profiles.forEach(p => {
+    const div = document.createElement('div');
+    div.id        = `panel-${p.id}`;
+    div.className = 'panel-profile';
+    div.style.display = 'none';
+    div.innerHTML = buildProfilePanelHTML(p);
+    container.appendChild(div);
+    // 填入目標配置數值
+    TARGET_CATS.forEach(c => {
+      const el = document.getElementById(`target-${c}-${p.id}`);
+      if (el) el.value = p.targetAllocations[c] || '';
+    });
+    updateTargetTotalBar(p.id);
+  });
+
+  // 顯示目前 active 的 panel
+  if (activeProfileId !== 'overview') {
+    const panel = document.getElementById(`panel-${activeProfileId}`);
+    if (panel) {
+      panel.style.display = '';
+      renderProfilePanel(activeProfileId);
+    } else {
+      // profile 不存在，回到 overview
+      activeProfileId = 'overview';
+      document.getElementById('panel-overview').style.display = '';
+    }
+  }
+}
+
+function renderAllProfilePanels() {
+  profiles.forEach(p => renderProfilePanel(p.id));
+}
+
+function renderProfilePanel(pid) {
+  const p = getProfile(pid);
+  if (!p) return;
+
+  // 更新小計
+  const subtotal = p.holdings.reduce((s, h) => s + getHoldingValueTWD(h), 0);
+  const subtotalEl = document.getElementById(`subtotal-${pid}`);
+  if (subtotalEl) subtotalEl.textContent = formatTWD(subtotal);
+
+  // 今日小計變化
+  let dayChange = 0, hasChange = false;
+  p.holdings.forEach(h => {
+    if (h.currentPrice && h.previousClose && h.category !== 'cash') {
+      dayChange += toTWD((h.currentPrice - h.previousClose) * h.qty, h.currency);
+      hasChange = true;
+    }
+  });
+  const changeEl = document.getElementById(`subtotal-change-${pid}`);
+  if (changeEl) {
+    if (hasChange) {
+      const sign  = dayChange >= 0 ? '+' : '';
+      const pct   = subtotal > 0 ? (dayChange / (subtotal - dayChange) * 100).toFixed(2) : '0.00';
+      const color = dayChange > 0 ? '#22c55e' : dayChange < 0 ? '#ef4444' : '#94a3b8';
+      changeEl.style.color = color;
+      changeEl.textContent = `今日 ${sign}${pct}% (${sign}${formatTWD(dayChange)})`;
+    } else {
+      changeEl.textContent = '';
+    }
+  }
+
+  // 填入目標配置
+  TARGET_CATS.forEach(c => {
+    const el = document.getElementById(`target-${c}-${pid}`);
+    if (el) el.value = p.targetAllocations[c] || '';
+  });
+  updateTargetTotalBar(pid);
+  renderAllocationComparison(pid);
+  renderHoldings(pid);
+}
+
+// ─── Overview 渲染 ────────────────────────────────────────────────────────────
+function renderOverview() {
+  const allHoldings = profiles.flatMap(p => p.holdings);
+
+  const totals = { tw_stock: 0, us_stock: 0, cash: 0, bond: 0, crypto: 0 };
+  allHoldings.forEach(h => {
+    totals[h.category] = (totals[h.category] || 0) + getHoldingValueTWD(h);
+  });
+  const total = Object.values(totals).reduce((a, b) => a + b, 0);
+
+  document.getElementById('total-value').textContent  = formatTWD(total);
+  document.getElementById('tw-value').textContent     = formatTWD(totals.tw_stock);
+  document.getElementById('us-value').textContent     = formatTWD(totals.us_stock);
+  document.getElementById('cash-value').textContent   = formatTWD(totals.cash);
+  document.getElementById('bond-value').textContent   = formatTWD(totals.bond);
+  document.getElementById('crypto-value').textContent = formatTWD(totals.crypto);
+
+  // 今日總變化
+  let totalDayChange = 0, hasAnyChange = false;
+  allHoldings.forEach(h => {
+    if (h.currentPrice && h.previousClose && h.category !== 'cash') {
+      totalDayChange += toTWD((h.currentPrice - h.previousClose) * h.qty, h.currency);
+      hasAnyChange = true;
+    }
+  });
+  const changeEl = document.getElementById('total-change');
+  if (changeEl) {
+    if (hasAnyChange) {
+      const sign  = totalDayChange >= 0 ? '+' : '';
+      const pct   = total > 0 ? (totalDayChange / (total - totalDayChange) * 100).toFixed(2) : '0.00';
+      const color = totalDayChange > 0 ? '#22c55e' : totalDayChange < 0 ? '#ef4444' : '#94a3b8';
+      changeEl.style.color = color;
+      changeEl.textContent = `今日 ${sign}${pct}% (${sign}${formatTWD(totalDayChange)})`;
+    } else {
+      changeEl.textContent = '';
+    }
+  }
+
+  renderChart();
+  renderHistoricalRecordsList();
+  renderHistoricalChart();
+}
+
 // ─── 新增持股 ────────────────────────────────────────────────────────────────
-function addHolding(e) {
+function addHolding(e, profileId) {
   e.preventDefault();
-  const category    = document.getElementById('holding-category').value;
-  const symbol      = document.getElementById('holding-symbol').value.trim().toUpperCase();
-  const qty         = parseFloat(document.getElementById('holding-qty').value);
-  const name        = document.getElementById('holding-name').value.trim();
-  const currency    = document.getElementById('holding-currency').value;
-  const manualPrice = parseFloat(document.getElementById('holding-manual-price').value) || null;
+  const p = getProfile(profileId);
+  if (!p) return;
+
+  const pid         = profileId;
+  const category    = document.getElementById(`holding-category-${pid}`).value;
+  const symbol      = document.getElementById(`holding-symbol-${pid}`).value.trim().toUpperCase();
+  const qty         = parseFloat(document.getElementById(`holding-qty-${pid}`).value);
+  const name        = document.getElementById(`holding-name-${pid}`).value.trim();
+  const currencyEl  = document.getElementById(`holding-currency-${pid}`);
+  const currency    = currencyEl ? currencyEl.value : 'TWD';
+  const manualPriceEl = document.getElementById(`holding-manual-price-${pid}`);
+  const manualPrice = manualPriceEl ? (parseFloat(manualPriceEl.value) || null) : null;
 
   if (isNaN(qty) || qty < 0) return alert('請輸入有效數量');
   if (category !== 'cash' && !symbol) return alert('請輸入代號');
@@ -296,43 +606,47 @@ function addHolding(e) {
     currentPrice: manualPrice || null,
   };
 
-  holdings.push(holding);
+  p.holdings.push(holding);
   saveData();
-  renderHoldings();
-  updateSummary();
-  renderCharts();
+  renderProfilePanel(pid);
+  renderOverview();
 
   // 清空表單
   e.target.reset();
-  document.getElementById('holding-currency').value = 'TWD';
-  onCategoryChange();
+  const currEl = document.getElementById(`holding-currency-${pid}`);
+  if (currEl) currEl.value = 'TWD';
+  onCategoryChange(pid);
 
   // 若需要自動抓價，立即抓取這一筆
   if (!manualPrice && category !== 'cash') {
     fetchPriceForHolding(holding).then(() => {
       saveData();
-      renderHoldings();
-      updateSummary();
-      renderChart();
+      renderProfilePanel(pid);
+      renderOverview();
     });
   }
 }
 
 // ─── 刪除持股 ────────────────────────────────────────────────────────────────
-function deleteHolding(id) {
+function deleteHolding(holdingId, profileId) {
   if (!confirm('確定要刪除這筆資產？')) return;
-  holdings = holdings.filter(h => h.id !== id);
+  const p = getProfile(profileId);
+  if (!p) return;
+  p.holdings = p.holdings.filter(h => h.id !== holdingId);
   saveData();
-  renderHoldings();
-  updateSummary();
-  renderCharts();
+  renderProfilePanel(profileId);
+  renderOverview();
 }
 
 // ─── 編輯 Modal ──────────────────────────────────────────────────────────────
-function openEdit(id) {
-  const h = holdings.find(x => x.id === id);
+function openEdit(holdingId, profileId) {
+  const p = getProfile(profileId);
+  if (!p) return;
+  const h = p.holdings.find(x => x.id === holdingId);
   if (!h) return;
-  document.getElementById('edit-id').value           = id;
+
+  document.getElementById('edit-id').value           = holdingId;
+  document.getElementById('edit-profile-id').value   = profileId;
   document.getElementById('edit-category').value     = h.category;
   document.getElementById('edit-qty').value          = h.qty;
   document.getElementById('edit-manual-price').value = h.manualPrice || '';
@@ -349,14 +663,18 @@ function closeModal() {
 }
 
 function saveEdit() {
-  const id          = document.getElementById('edit-id').value;
-  const category    = document.getElementById('edit-category').value;
-  const qty         = parseFloat(document.getElementById('edit-qty').value);
+  const holdingId  = document.getElementById('edit-id').value;
+  const profileId  = document.getElementById('edit-profile-id').value;
+  const category   = document.getElementById('edit-category').value;
+  const qty        = parseFloat(document.getElementById('edit-qty').value);
   const manualPrice = parseFloat(document.getElementById('edit-manual-price').value) || null;
-  const name        = document.getElementById('edit-name').value.trim();
+  const name       = document.getElementById('edit-name').value.trim();
 
-  const h = holdings.find(x => x.id === id);
+  const p = getProfile(profileId);
+  if (!p) return;
+  const h = p.holdings.find(x => x.id === holdingId);
   if (!h) return;
+
   h.category    = category;
   h.qty         = qty;
   h.name        = name || h.symbol || CATEGORY_LABELS[h.category];
@@ -364,27 +682,27 @@ function saveEdit() {
   if (manualPrice) h.currentPrice = manualPrice;
 
   saveData();
-  renderHoldings();
-  updateSummary();
-  renderCharts();
+  renderProfilePanel(profileId);
+  renderOverview();
   closeModal();
 }
 
 // ─── 表單 UI 互動 ────────────────────────────────────────────────────────────
-function onCategoryChange() {
-  const cat = document.getElementById('holding-category').value;
-  const symbolGroup      = document.getElementById('symbol-group');
-  const manualPriceGroup = document.getElementById('manual-price-group');
-  const currencyGroup    = document.getElementById('currency-group');
-  const qtyLabel         = document.getElementById('qty-label');
-  const symbolHint       = document.getElementById('symbol-hint');
+function onCategoryChange(pid) {
+  const cat = document.getElementById(`holding-category-${pid}`).value;
+  const symbolGroup      = document.getElementById(`symbol-group-${pid}`);
+  const manualPriceGroup = document.getElementById(`manual-price-group-${pid}`);
+  const currencyGroup    = document.getElementById(`currency-group-${pid}`);
+  const qtyLabel         = document.getElementById(`qty-label-${pid}`);
+  const symbolHint       = document.getElementById(`symbol-hint-${pid}`);
 
   if (cat === 'cash') {
     symbolGroup.style.display      = 'none';
     manualPriceGroup.style.display = 'none';
     currencyGroup.style.display    = '';
     qtyLabel.textContent           = '金額';
-    document.getElementById('holding-currency').value = 'TWD';
+    const currEl = document.getElementById(`holding-currency-${pid}`);
+    if (currEl) currEl.value = 'TWD';
   } else if (cat === 'crypto') {
     symbolGroup.style.display      = '';
     manualPriceGroup.style.display = '';
@@ -412,286 +730,41 @@ function onCategoryChange() {
   }
 }
 
-// ─── 價格抓取 ────────────────────────────────────────────────────────────────
-async function refreshAllPrices() {
-  const btn = document.getElementById('refresh-btn');
-  btn.disabled = true;
-  btn.classList.add('loading');
-
-  // 依類別分組，減少 proxy 呼叫次數
-  const twHoldings = holdings.filter(h =>
-    !h.manualPrice && (h.category === 'tw_stock' || (h.category === 'bond' && h.currency === 'TWD'))
-  );
-  const usHoldings = holdings.filter(h =>
-    !h.manualPrice && (h.category === 'us_stock' || (h.category === 'bond' && h.currency !== 'TWD'))
-  );
-  const cryptoHoldings = holdings.filter(h => !h.manualPrice && h.category === 'crypto');
-
-  // 台股：逐一 TWSE（直接存取，不需 proxy）
-  for (const h of twHoldings) await fetchTWStockPrice(h);
-
-  // 美股/USD債：一次批次請求
-  await fetchUSStocksBatch(usHoldings);
-
-  // 加密貨幣：一次批次請求
-  await fetchCryptoBatch(cryptoHoldings);
-
-  saveData();
-  renderHoldings();
-  updateSummary();
-  renderCharts();
-
-  const now = new Date().toLocaleString('zh-TW');
-  document.getElementById('last-updated').textContent = `最後更新：${now}`;
-
-  btn.disabled = false;
-  btn.classList.remove('loading');
+// ─── 排序 ────────────────────────────────────────────────────────────────────
+function setSort(pid, by) {
+  holdingsSortBy[pid] = (holdingsSortBy[pid] === by) ? 'none' : by;
+  document.getElementById(`sort-category-btn-${pid}`)?.classList.toggle('active', holdingsSortBy[pid] === 'category');
+  document.getElementById(`sort-value-btn-${pid}`)?.classList.toggle('active',    holdingsSortBy[pid] === 'value');
+  renderHoldings(pid);
 }
 
-// 新增單筆時立即抓價
-async function fetchPriceForHolding(holding) {
-  try {
-    if (holding.category === 'crypto') {
-      await fetchCryptoPrice(holding);
-    } else if (holding.category === 'tw_stock' || (holding.category === 'bond' && holding.currency === 'TWD')) {
-      await fetchTWStockPrice(holding);
-    } else {
-      await fetchViaYahoo(holding.symbol, holding, 'USD');
-    }
-  } catch (err) {
-    console.warn(`無法取得 ${holding.symbol} 價格:`, err);
+function getSortedHoldings(holdings, pid) {
+  const list = [...holdings];
+  const sortBy = holdingsSortBy[pid] || 'none';
+  if (sortBy === 'category') {
+    list.sort((a, b) => (CATEGORY_ORDER[a.category] ?? 9) - (CATEGORY_ORDER[b.category] ?? 9));
+  } else if (sortBy === 'value') {
+    list.sort((a, b) => getHoldingValueTWD(b) - getHoldingValueTWD(a));
   }
-}
-
-// 解析價格字串，回傳有效正數或 null（處理 TWSE 的 "-" 等無效值）
-function parsePrice(val) {
-  if (typeof val === 'string') val = val.replace(/,/g, '').trim();
-  const n = parseFloat(val);
-  return (isFinite(n) && n > 0) ? n : null;
-}
-
-// 台股：本機直連（MIS 即時 → TWSE afterTrading → TPEX）
-//       GitHub Pages：直接用 TWSE afterTrading（有 CORS *，MIS 沒有 CORS 跳過）
-async function fetchTWStockPrice(holding) {
-  const symbol = holding.symbol.replace(/\.TW$/i, '').toUpperCase();
-
-  // 1. TWSE MIS 即時 API（本機 --disable-web-security 可用；GitHub Pages 無 CORS 跳過）
-  if (!IS_GITHUB_PAGES) {
-    for (const market of ['tse', 'otc']) {
-      try {
-        const res  = await fetch(`https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=${market}_${symbol.toLowerCase()}.tw&json=1&delay=0`);
-        if (!res.ok) continue;
-        const json = await res.json();
-        const item = json?.msgArray?.[0];
-        if (!item) continue;
-        const price = parsePrice(item.z);
-        const prev  = parsePrice(item.y);
-        if (price) {
-          holding.currentPrice  = price;
-          holding.currency      = 'TWD';
-          if (prev) holding.previousClose = prev;
-          return;
-        }
-      } catch {}
-    }
-  }
-
-  // 2. TWSE afterTrading（有 CORS *，GitHub Pages + 本機都可用，回傳當天收盤）
-  try {
-    const res  = await fetch(`https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?stockNo=${symbol}&response=json`);
-    if (res.ok) {
-      const json = await res.json();
-      if (json.stat === 'OK' && Array.isArray(json.data) && json.data.length > 0) {
-        const last   = json.data[json.data.length - 1];
-        const price  = parsePrice(last[6]);
-        const change = parseFloat((last[7] || '').replace(/,/g, '') || '0');
-        if (price) {
-          holding.currentPrice = price;
-          holding.currency     = 'TWD';
-          if (!isNaN(change)) {
-            const prev = price - change;
-            if (prev > 0) holding.previousClose = prev;
-          }
-          return;
-        }
-      }
-    }
-  } catch {}
-
-  // 3. TPEX 收盤 API（上櫃備用；本機直連）
-  if (!IS_GITHUB_PAGES) {
-    try {
-      const res  = await fetch('https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes');
-      if (res.ok) {
-        const data  = await res.json();
-        const row   = data.find(d => d.SecuritiesCompanyCode === symbol);
-        const price = row ? parsePrice(row.Close) : null;
-        if (price) {
-          holding.currentPrice = price;
-          holding.currency     = 'TWD';
-          const change = parseFloat((row.Change || '').replace(/,/g, '') || '0');
-          if (!isNaN(change)) {
-            const prev = price - change;
-            if (prev > 0) holding.previousClose = prev;
-          }
-          return;
-        }
-      }
-    } catch {}
-  }
-}
-
-// 美股抓取
-async function fetchUSStocksBatch(usHoldings) {
-  if (!usHoldings.length) return;
-  for (const h of usHoldings) {
-    if (/^\d/.test(h.symbol)) {
-      await fetchTWStockPrice(h);
-    } else {
-      await fetchViaYahoo(h.symbol, h, 'USD');
-    }
-  }
-}
-
-// Yahoo Finance chart API
-// 本機：直連 query1/query2
-// GitHub Pages：透過 corsproxy.io（從真實瀏覽器有 CORS，測試確認可用）
-async function fetchViaYahoo(symbol, holding, currency) {
-  if (/^\d/.test(symbol) && !symbol.endsWith('.TW')) symbol = symbol + '.TW';
-  const encoded   = encodeURIComponent(symbol);
-  const yahooUrl  = `https://query1.finance.yahoo.com/v8/finance/chart/${encoded}?interval=1d&range=1d`;
-  const urls = IS_GITHUB_PAGES
-    ? [`https://corsproxy.io/?url=${encodeURIComponent(yahooUrl)}`]
-    : [yahooUrl, `https://query2.finance.yahoo.com/v8/finance/chart/${encoded}?interval=1d&range=1d`];
-
-  for (const url of urls) {
-    try {
-      const res = await fetch(url);
-      if (!res.ok) continue;
-      const text = await res.text();
-      let data;
-      try { const w = JSON.parse(text); data = w.contents ? JSON.parse(w.contents) : w; }
-      catch { continue; }
-      const meta  = data?.chart?.result?.[0]?.meta;
-      const price = meta?.regularMarketPrice ?? meta?.chartPreviousClose;
-      if (price) {
-        holding.currentPrice = price;
-        holding.currency     = currency;
-        const prev = meta?.chartPreviousClose ?? meta?.previousClose;
-        if (prev) holding.previousClose = prev;
-        return;
-      }
-    } catch {}
-  }
-}
-
-// 加密貨幣批次：CoinGecko（一次請求取全部）
-async function fetchCryptoBatch(cryptoHoldings) {
-  if (!cryptoHoldings.length) return;
-  const idMap = Object.fromEntries(
-    cryptoHoldings.map(h => [getCoinId(h.symbol), h]).filter(([id]) => id)
-  );
-  const ids = Object.keys(idMap);
-  if (!ids.length) return;
-  try {
-    const res  = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids.join(',')}&vs_currencies=usd&include_24hr_change=true`);
-    const json = await res.json();
-    for (const [coinId, h] of Object.entries(idMap)) {
-      const usd = json?.[coinId]?.usd;
-      if (usd) {
-        h.currentPrice = usd;
-        h.currency     = 'USD';
-        const pct = json[coinId]?.usd_24h_change;
-        if (pct != null) h.previousClose = usd / (1 + pct / 100);
-      }
-    }
-  } catch {
-    for (const h of cryptoHoldings) await fetchCryptoPrice(h);
-  }
-}
-
-// CoinGecko 單一（新增持股時用）
-async function fetchCryptoPrice(holding) {
-  const coinId = getCoinId(holding.symbol);
-  if (!coinId) { console.warn(`找不到幣種 ID：${holding.symbol}`); return; }
-  const res  = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd`);
-  const json = await res.json();
-  const usd  = json?.[coinId]?.usd;
-  if (usd) { holding.currentPrice = usd; holding.currency = 'USD'; }
-}
-
-function getCoinId(symbol) {
-  const map = {
-    BTC:  'bitcoin',
-    ETH:  'ethereum',
-    SOL:  'solana',
-    BNB:  'binancecoin',
-    XRP:  'ripple',
-    ADA:  'cardano',
-    DOGE: 'dogecoin',
-    AVAX: 'avalanche-2',
-    DOT:  'polkadot',
-    MATIC:'matic-network',
-    LINK: 'chainlink',
-    UNI:  'uniswap',
-    ATOM: 'cosmos',
-    LTC:  'litecoin',
-    NEAR: 'near',
-    APT:  'aptos',
-    ARB:  'arbitrum',
-    OP:   'optimism',
-    SUI:  'sui',
-    PEPE: 'pepe',
-  };
-  return map[symbol.toUpperCase()] || symbol.toLowerCase().replace(/\s+/g, '-');
-}
-
-// 自動取得匯率（Open Exchange Rates 免費端點）
-async function fetchExchangeRate() {
-  try {
-    const url  = 'https://api.exchangerate-api.com/v4/latest/USD';
-    const res  = await fetch(url);
-    const json = await res.json();
-    const rate = json?.rates?.TWD;
-    if (rate) {
-      usdRate = parseFloat(rate.toFixed(2));
-      document.getElementById('usd-rate').value = usdRate;
-      saveSettings();
-      alert(`匯率已更新：1 USD = ${usdRate} TWD`);
-    }
-  } catch {
-    alert('無法自動取得匯率，請手動輸入');
-  }
-}
-
-// ─── 價值換算（統一換成 TWD）────────────────────────────────────────────────
-function toTWD(price, currency) {
-  if (!price) return 0;
-  return currency === 'USD' ? price * usdRate : price;
-}
-
-function getHoldingValueTWD(h) {
-  if (h.category === 'cash') {
-    return toTWD(h.qty, h.currency);
-  }
-  const price = h.currentPrice;
-  if (!price) return 0;
-  return toTWD(price * h.qty, h.currency);
+  return list;
 }
 
 // ─── 渲染：持股清單 ──────────────────────────────────────────────────────────
-function renderHoldings() {
-  const container = document.getElementById('holdings-list');
-  if (holdings.length === 0) {
+function renderHoldings(pid) {
+  const p = getProfile(pid);
+  if (!p) return;
+  const container = document.getElementById(`holdings-list-${pid}`);
+  if (!container) return;
+
+  if (p.holdings.length === 0) {
     container.innerHTML = '<div class="empty-state">尚無持股，請新增資產</div>';
     return;
   }
 
-  container.innerHTML = getSortedHoldings().map(h => {
+  container.innerHTML = getSortedHoldings(p.holdings, pid).map(h => {
     const valueTWD = getHoldingValueTWD(h);
     const catLabel = CATEGORY_LABELS[h.category];
 
-    // 計算今日漲跌
     let changeHtml = '';
     if (h.currentPrice && h.previousClose && h.category !== 'cash') {
       const priceDiff = h.currentPrice - h.previousClose;
@@ -729,92 +802,296 @@ function renderHoldings() {
         <div class="holding-right">
           <div class="holding-price-info">${priceHtml}</div>
           <div class="holding-actions">
-            <button class="btn btn-edit" onclick="openEdit('${h.id}')">編輯</button>
-            <button class="btn btn-danger" onclick="deleteHolding('${h.id}')">刪除</button>
+            <button class="btn btn-edit" onclick="openEdit('${h.id}','${pid}')">編輯</button>
+            <button class="btn btn-danger" onclick="deleteHolding('${h.id}','${pid}')">刪除</button>
           </div>
         </div>
       </div>`;
   }).join('');
 }
 
-// ─── 渲染：總覽卡片 ──────────────────────────────────────────────────────────
-function updateSummary() {
-  const totals = { tw_stock: 0, us_stock: 0, cash: 0, bond: 0, crypto: 0 };
+// ─── 價格抓取 ────────────────────────────────────────────────────────────────
+async function refreshAllPrices() {
+  const btn = document.getElementById('refresh-btn');
+  btn.disabled = true; btn.classList.add('loading');
 
-  holdings.forEach(h => {
-    totals[h.category] = (totals[h.category] || 0) + getHoldingValueTWD(h);
-  });
+  const allHoldings    = profiles.flatMap(p => p.holdings);
+  const twHoldings     = allHoldings.filter(h => !h.manualPrice && (h.category === 'tw_stock' || (h.category === 'bond' && h.currency === 'TWD')));
+  const usHoldings     = allHoldings.filter(h => !h.manualPrice && (h.category === 'us_stock' || (h.category === 'bond' && h.currency !== 'TWD')));
+  const cryptoHoldings = allHoldings.filter(h => !h.manualPrice && h.category === 'crypto');
 
-  const total = Object.values(totals).reduce((a, b) => a + b, 0);
+  for (const h of twHoldings) await fetchTWStockPrice(h);
+  await fetchUSStocksBatch(usHoldings);
+  await fetchCryptoBatch(cryptoHoldings);
 
-  document.getElementById('total-value').textContent  = formatTWD(total);
-  document.getElementById('tw-value').textContent     = formatTWD(totals.tw_stock);
-  document.getElementById('us-value').textContent     = formatTWD(totals.us_stock);
-  document.getElementById('cash-value').textContent   = formatTWD(totals.cash);
-  document.getElementById('bond-value').textContent   = formatTWD(totals.bond);
-  document.getElementById('crypto-value').textContent = formatTWD(totals.crypto);
+  saveData();
+  renderAll();
 
-  // 計算今日總資產變化
-  let totalDayChange = 0;
-  let hasAnyChange = false;
-  holdings.forEach(h => {
-    if (h.currentPrice && h.previousClose && h.category !== 'cash') {
-      const diff = toTWD((h.currentPrice - h.previousClose) * h.qty, h.currency);
-      totalDayChange += diff;
-      hasAnyChange = true;
-    }
-  });
-  const changeEl = document.getElementById('total-change');
-  if (changeEl) {
-    if (hasAnyChange) {
-      const sign  = totalDayChange >= 0 ? '+' : '';
-      const pct   = total > 0 ? (totalDayChange / (total - totalDayChange) * 100).toFixed(2) : '0.00';
-      const color = totalDayChange > 0 ? '#22c55e' : totalDayChange < 0 ? '#ef4444' : '#94a3b8';
-      changeEl.style.color = color;
-      changeEl.textContent = `今日 ${sign}${pct}% (${sign}${formatTWD(totalDayChange)})`;
+  document.getElementById('last-updated').textContent = `最後更新：${new Date().toLocaleString('zh-TW')}`;
+  btn.disabled = false; btn.classList.remove('loading');
+}
+
+// 新增單筆時立即抓價
+async function fetchPriceForHolding(holding) {
+  try {
+    if (holding.category === 'crypto') {
+      await fetchCryptoPrice(holding);
+    } else if (holding.category === 'tw_stock' || (holding.category === 'bond' && holding.currency === 'TWD')) {
+      await fetchTWStockPrice(holding);
     } else {
-      changeEl.textContent = '';
+      await fetchViaYahoo(holding.symbol, holding, 'USD');
+    }
+  } catch (err) {
+    console.warn(`無法取得 ${holding.symbol} 價格:`, err);
+  }
+}
+
+// 解析價格字串
+function parsePrice(val) {
+  if (typeof val === 'string') val = val.replace(/,/g, '').trim();
+  const n = parseFloat(val);
+  return (isFinite(n) && n > 0) ? n : null;
+}
+
+// 台股：本機直連（MIS 即時 → TWSE afterTrading → TPEX）
+async function fetchTWStockPrice(holding) {
+  const symbol = holding.symbol.replace(/\.TW$/i, '').toUpperCase();
+
+  if (!IS_GITHUB_PAGES) {
+    for (const market of ['tse', 'otc']) {
+      try {
+        const res  = await fetch(`https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=${market}_${symbol.toLowerCase()}.tw&json=1&delay=0`);
+        if (!res.ok) continue;
+        const json = await res.json();
+        const item = json?.msgArray?.[0];
+        if (!item) continue;
+        const price = parsePrice(item.z);
+        const prev  = parsePrice(item.y);
+        if (price) {
+          holding.currentPrice  = price;
+          holding.currency      = 'TWD';
+          if (prev) holding.previousClose = prev;
+          return;
+        }
+      } catch {}
+    }
+  }
+
+  try {
+    const res  = await fetch(`https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?stockNo=${symbol}&response=json`);
+    if (res.ok) {
+      const json = await res.json();
+      if (json.stat === 'OK' && Array.isArray(json.data) && json.data.length > 0) {
+        const last   = json.data[json.data.length - 1];
+        const price  = parsePrice(last[6]);
+        const change = parseFloat((last[7] || '').replace(/,/g, '') || '0');
+        if (price) {
+          holding.currentPrice = price;
+          holding.currency     = 'TWD';
+          if (!isNaN(change)) {
+            const prev = price - change;
+            if (prev > 0) holding.previousClose = prev;
+          }
+          return;
+        }
+      }
+    }
+  } catch {}
+
+  if (!IS_GITHUB_PAGES) {
+    try {
+      const res  = await fetch('https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes');
+      if (res.ok) {
+        const data  = await res.json();
+        const row   = data.find(d => d.SecuritiesCompanyCode === symbol);
+        const price = row ? parsePrice(row.Close) : null;
+        if (price) {
+          holding.currentPrice = price;
+          holding.currency     = 'TWD';
+          const change = parseFloat((row.Change || '').replace(/,/g, '') || '0');
+          if (!isNaN(change)) {
+            const prev = price - change;
+            if (prev > 0) holding.previousClose = prev;
+          }
+          return;
+        }
+      }
+    } catch {}
+  }
+}
+
+// 美股抓取
+async function fetchUSStocksBatch(usHoldings) {
+  if (!usHoldings.length) return;
+  for (const h of usHoldings) {
+    if (/^\d/.test(h.symbol)) {
+      await fetchTWStockPrice(h);
+    } else {
+      await fetchViaYahoo(h.symbol, h, 'USD');
     }
   }
 }
 
-function renderCharts() {
-  renderChart();
-  renderAllocationComparison();
+// Yahoo Finance chart API
+async function fetchViaYahoo(symbol, holding, currency) {
+  if (/^\d/.test(symbol) && !symbol.endsWith('.TW')) symbol = symbol + '.TW';
+  const encoded   = encodeURIComponent(symbol);
+  const yahooUrl  = `https://query1.finance.yahoo.com/v8/finance/chart/${encoded}?interval=1d&range=1d`;
+  const urls = IS_GITHUB_PAGES
+    ? [`https://corsproxy.io/?url=${encodeURIComponent(yahooUrl)}`]
+    : [yahooUrl, `https://query2.finance.yahoo.com/v8/finance/chart/${encoded}?interval=1d&range=1d`];
+
+  for (const url of urls) {
+    try {
+      const res = await fetch(url);
+      if (!res.ok) continue;
+      const text = await res.text();
+      let data;
+      try { const w = JSON.parse(text); data = w.contents ? JSON.parse(w.contents) : w; }
+      catch { continue; }
+      const meta  = data?.chart?.result?.[0]?.meta;
+      const price = meta?.regularMarketPrice ?? meta?.chartPreviousClose;
+      if (price) {
+        holding.currentPrice = price;
+        holding.currency     = currency;
+        const prev = meta?.chartPreviousClose ?? meta?.previousClose;
+        if (prev) holding.previousClose = prev;
+        return;
+      }
+    } catch {}
+  }
+}
+
+// 加密貨幣批次：CoinGecko
+async function fetchCryptoBatch(cryptoHoldings) {
+  if (!cryptoHoldings.length) return;
+  const idMap = Object.fromEntries(
+    cryptoHoldings.map(h => [getCoinId(h.symbol), h]).filter(([id]) => id)
+  );
+  const ids = Object.keys(idMap);
+  if (!ids.length) return;
+  try {
+    const res  = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids.join(',')}&vs_currencies=usd&include_24hr_change=true`);
+    const json = await res.json();
+    for (const [coinId, h] of Object.entries(idMap)) {
+      const usd = json?.[coinId]?.usd;
+      if (usd) {
+        h.currentPrice = usd;
+        h.currency     = 'USD';
+        const pct = json[coinId]?.usd_24h_change;
+        if (pct != null) h.previousClose = usd / (1 + pct / 100);
+      }
+    }
+  } catch {
+    for (const h of cryptoHoldings) await fetchCryptoPrice(h);
+  }
+}
+
+// CoinGecko 單一
+async function fetchCryptoPrice(holding) {
+  const coinId = getCoinId(holding.symbol);
+  if (!coinId) { console.warn(`找不到幣種 ID：${holding.symbol}`); return; }
+  const res  = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd`);
+  const json = await res.json();
+  const usd  = json?.[coinId]?.usd;
+  if (usd) { holding.currentPrice = usd; holding.currency = 'USD'; }
+}
+
+function getCoinId(symbol) {
+  const map = {
+    BTC:  'bitcoin',
+    ETH:  'ethereum',
+    SOL:  'solana',
+    BNB:  'binancecoin',
+    XRP:  'ripple',
+    ADA:  'cardano',
+    DOGE: 'dogecoin',
+    AVAX: 'avalanche-2',
+    DOT:  'polkadot',
+    MATIC:'matic-network',
+    LINK: 'chainlink',
+    UNI:  'uniswap',
+    ATOM: 'cosmos',
+    LTC:  'litecoin',
+    NEAR: 'near',
+    APT:  'aptos',
+    ARB:  'arbitrum',
+    OP:   'optimism',
+    SUI:  'sui',
+    PEPE: 'pepe',
+  };
+  return map[symbol.toUpperCase()] || symbol.toLowerCase().replace(/\s+/g, '-');
+}
+
+// 自動取得匯率
+async function fetchExchangeRate() {
+  try {
+    const url  = 'https://api.exchangerate-api.com/v4/latest/USD';
+    const res  = await fetch(url);
+    const json = await res.json();
+    const rate = json?.rates?.TWD;
+    if (rate) {
+      usdRate = parseFloat(rate.toFixed(2));
+      document.getElementById('usd-rate').value = usdRate;
+      saveSettings();
+      alert(`匯率已更新：1 USD = ${usdRate} TWD`);
+    }
+  } catch {
+    alert('無法自動取得匯率，請手動輸入');
+  }
+}
+
+// ─── 價值換算 ─────────────────────────────────────────────────────────────────
+function toTWD(price, currency) {
+  if (!price) return 0;
+  return currency === 'USD' ? price * usdRate : price;
+}
+
+function getHoldingValueTWD(h) {
+  if (h.category === 'cash') {
+    return toTWD(h.qty, h.currency);
+  }
+  const price = h.currentPrice;
+  if (!price) return 0;
+  return toTWD(price * h.qty, h.currency);
 }
 
 // ─── 目標配置 ─────────────────────────────────────────────────────────────────
-const TARGET_CATS = ['tw_stock', 'us_stock', 'cash', 'bond', 'crypto'];
-
-function updateTargetTotalBar() {
-  const sum = TARGET_CATS.reduce((s, c) => s + (targetAllocations[c] || 0), 0);
-  const sumEl = document.getElementById('target-sum');
-  const barEl = document.getElementById('target-total-bar');
+function updateTargetTotalBar(pid) {
+  const p = getProfile(pid);
+  if (!p) return;
+  const sum = TARGET_CATS.reduce((s, c) => s + (p.targetAllocations[c] || 0), 0);
+  const sumEl = document.getElementById(`target-sum-${pid}`);
+  const barEl = document.getElementById(`target-total-bar-${pid}`);
   if (sumEl) sumEl.textContent = sum;
   if (barEl) barEl.className = 'target-total-bar' + (sum === 100 ? ' perfect' : sum > 100 ? ' over' : '');
 }
 
-function onTargetChange() {
+function onTargetChange(pid) {
+  const p = getProfile(pid);
+  if (!p) return;
   TARGET_CATS.forEach(c => {
-    targetAllocations[c] = parseFloat(document.getElementById(`target-${c}`)?.value) || 0;
+    p.targetAllocations[c] = parseFloat(document.getElementById(`target-${c}-${pid}`)?.value) || 0;
   });
-  updateTargetTotalBar();
+  updateTargetTotalBar(pid);
   saveData();
-  renderAllocationComparison();
+  renderAllocationComparison(pid);
 }
 
-function renderAllocationComparison() {
-  const container = document.getElementById('allocation-comparison');
+function renderAllocationComparison(pid) {
+  const container = document.getElementById(`allocation-comparison-${pid}`);
   if (!container) return;
+  const p = getProfile(pid);
+  if (!p) return;
 
   const totals = Object.fromEntries(TARGET_CATS.map(c => [c, 0]));
-  holdings.forEach(h => { totals[h.category] = (totals[h.category] || 0) + getHoldingValueTWD(h); });
+  p.holdings.forEach(h => { totals[h.category] = (totals[h.category] || 0) + getHoldingValueTWD(h); });
   const grandTotal = Object.values(totals).reduce((a, b) => a + b, 0);
-  const targetSum  = TARGET_CATS.reduce((s, c) => s + (targetAllocations[c] || 0), 0);
+  const targetSum  = TARGET_CATS.reduce((s, c) => s + (p.targetAllocations[c] || 0), 0);
 
   if (grandTotal === 0 || targetSum === 0) { container.innerHTML = ''; return; }
 
-  const cats = TARGET_CATS.filter(c => totals[c] > 0 || (targetAllocations[c] || 0) > 0);
+  const cats = TARGET_CATS.filter(c => totals[c] > 0 || (p.targetAllocations[c] || 0) > 0);
   if (!cats.length) { container.innerHTML = ''; return; }
 
   const header = `<div class="comparison-row comparison-header">
@@ -824,7 +1101,7 @@ function renderAllocationComparison() {
   const rows = cats.map(c => {
     const cur    = totals[c];
     const curPct = grandTotal > 0 ? cur / grandTotal * 100 : 0;
-    const tgtPct = targetAllocations[c] || 0;
+    const tgtPct = p.targetAllocations[c] || 0;
     const diff   = grandTotal * tgtPct / 100 - cur;
     let adjHtml;
     if (Math.abs(diff) < 100) {
@@ -845,22 +1122,21 @@ function renderAllocationComparison() {
   container.innerHTML = header + rows;
 }
 
-// ─── 渲染：資產配置圓餅圖 ─────────────────────────────────────────────────────
+// ─── 渲染：資產配置圓餅圖（aggregate ALL profiles）──────────────────────────
 function renderChart() {
+  const allHoldings = profiles.flatMap(p => p.holdings);
   const totals = { tw_stock: 0, us_stock: 0, cash: 0, bond: 0, crypto: 0 };
-  holdings.forEach(h => {
+  allHoldings.forEach(h => {
     totals[h.category] = (totals[h.category] || 0) + getHoldingValueTWD(h);
   });
 
-  const total = Object.values(totals).reduce((a, b) => a + b, 0);
-
+  const total   = Object.values(totals).reduce((a, b) => a + b, 0);
   const entries = Object.entries(totals).filter(([, v]) => v > 0);
   const labels  = entries.map(([k]) => CATEGORY_LABELS[k]);
   const data    = entries.map(([, v]) => v);
   const colors  = entries.map(([k]) => CATEGORY_COLORS[k]);
 
   const ctx = document.getElementById('allocationChart').getContext('2d');
-
   if (chart) chart.destroy();
 
   if (entries.length === 0) {
@@ -897,7 +1173,6 @@ function renderChart() {
     }
   });
 
-  // 自訂 legend
   const legendHtml = entries.map(([k, v]) => {
     const pct = total > 0 ? (v / total * 100).toFixed(1) : '0.0';
     return `
@@ -921,24 +1196,12 @@ function formatTWD(value) {
   return `NT$${Math.round(value).toLocaleString('zh-TW')}`;
 }
 
-// ─── 排序 ────────────────────────────────────────────────────────────────────
-const CATEGORY_ORDER = { tw_stock: 0, us_stock: 1, bond: 2, cash: 3, crypto: 4 };
-
-function setSort(by) {
-  holdingsSortBy = (holdingsSortBy === by) ? 'none' : by; // 再按一次取消排序
-  document.getElementById('sort-category-btn').classList.toggle('active', holdingsSortBy === 'category');
-  document.getElementById('sort-value-btn').classList.toggle('active',    holdingsSortBy === 'value');
-  renderHoldings();
-}
-
-function getSortedHoldings() {
-  const list = [...holdings];
-  if (holdingsSortBy === 'category') {
-    list.sort((a, b) => (CATEGORY_ORDER[a.category] ?? 9) - (CATEGORY_ORDER[b.category] ?? 9));
-  } else if (holdingsSortBy === 'value') {
-    list.sort((a, b) => getHoldingValueTWD(b) - getHoldingValueTWD(a));
-  }
-  return list;
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 // ─── 卡片折疊 ────────────────────────────────────────────────────────────────
@@ -949,29 +1212,18 @@ function toggleCard(bodyId) {
   btn.textContent = collapsed ? '+' : '−';
 }
 
-function escHtml(str) {
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
 // ─── 歷史資產紀錄 ────────────────────────────────────────────────────────────
-
-// 取得當前總資產（供歷史紀錄用）
 function getCurrentTotal() {
-  return holdings.reduce((sum, h) => sum + getHoldingValueTWD(h), 0);
+  return profiles.flatMap(p => p.holdings).reduce((sum, h) => sum + getHoldingValueTWD(h), 0);
 }
 
-// 「記錄今日資產」按鈕
 function saveCurrentAssets() {
   const total = getCurrentTotal();
   if (total === 0) {
     alert('目前沒有資產數據，請先更新股價後再記錄');
     return;
   }
-  const today = new Date().toISOString().split('T')[0];
+  const today    = new Date().toISOString().split('T')[0];
   const existing = historicalRecords.findIndex(r => r.date === today);
   if (existing >= 0) {
     if (!confirm(`${today} 已有紀錄（${formatTWD(historicalRecords[existing].value)}），是否覆蓋為目前的 ${formatTWD(total)}？`)) return;
@@ -985,7 +1237,6 @@ function saveCurrentAssets() {
   renderHistoricalChart();
 }
 
-// 手動新增歷史紀錄（日期 + 金額）
 function addHistoricalRecord() {
   const dateVal = document.getElementById('historical-date').value;
   const value   = parseFloat(document.getElementById('historical-value').value);
@@ -1004,7 +1255,6 @@ function addHistoricalRecord() {
   }
 
   historicalRecords.sort((a, b) => a.date.localeCompare(b.date));
-
   document.getElementById('historical-date').value  = '';
   document.getElementById('historical-value').value = '';
 
@@ -1013,20 +1263,18 @@ function addHistoricalRecord() {
   renderHistoricalChart();
 }
 
-// 取得「現在」的虛擬紀錄點
 function getNowRecord() {
   const today = new Date().toISOString().split('T')[0];
   return { date: today, value: getCurrentTotal(), isNow: true };
 }
 
-// 折線圖（X 軸依真實日期比例）
 function renderHistoricalChart() {
   const canvas = document.getElementById('historicalAssetChart');
   if (!canvas) return;
 
-  const nowRec    = getNowRecord();
+  const nowRec     = getNowRecord();
   const allRecords = [...historicalRecords, nowRec]
-    .filter((r, i, arr) => arr.findIndex(x => x.date === r.date) === i) // 去重（今天若已有記錄）
+    .filter((r, i, arr) => arr.findIndex(x => x.date === r.date) === i)
     .sort((a, b) => a.date.localeCompare(b.date));
 
   if (allRecords.length < 2) {
@@ -1036,13 +1284,11 @@ function renderHistoricalChart() {
 
   const ctx = canvas.getContext('2d');
 
-  // 用 timestamp 做 X 軸 → 比例正確
   const dataPoints = allRecords.map(r => ({
     x: new Date(r.date + 'T00:00:00').getTime(),
     y: r.value,
   }));
 
-  // 每年 1/1 作為刻度
   const minYear = new Date(allRecords[0].date).getFullYear();
   const maxYear = new Date(allRecords[allRecords.length - 1].date).getFullYear();
   const yearTickValues = [];
@@ -1114,7 +1360,6 @@ function renderHistoricalChart() {
   });
 }
 
-// 紀錄清單（顯示完整日期）
 function renderHistoricalRecordsList() {
   const container = document.getElementById('historical-records-list');
   if (!container) return;
