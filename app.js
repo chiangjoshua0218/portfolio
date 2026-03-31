@@ -22,14 +22,16 @@ const TARGET_CATS = ['tw_stock', 'us_stock', 'cash', 'bond', 'crypto'];
 const CATEGORY_ORDER = { tw_stock: 0, us_stock: 1, bond: 2, cash: 3, crypto: 4 };
 
 // ─── 狀態 ────────────────────────────────────────────────────────────────────
-let profiles          = []; // { id, name, holdings, targetAllocations }
-let activeProfileId   = 'overview';
-let historicalRecords = [];
-let usdRate           = 32;
-let chart             = null;
-let historicalChart   = null;
-let holdingsSortBy    = {}; // { [profileId]: 'none'|'category'|'value' }
-let fileHandle        = null;
+let profiles              = []; // { id, name, holdings, targetAllocations, historicalRecords }
+let activeProfileId       = 'overview';
+let historicalRecords     = []; // overview 用（所有人合計）
+let usdRate               = 32;
+let chart                 = null;
+let historicalChart       = null;
+let profileCharts         = {}; // { [pid]: Chart instance }
+let profileHistoricalCharts = {}; // { [pid]: Chart instance }
+let holdingsSortBy        = {}; // { [profileId]: 'none'|'category'|'value' }
+let fileHandle            = null;
 const FILE_API_SUPPORTED = 'showOpenFilePicker' in window;
 
 // ─── Profile helpers ──────────────────────────────────────────────────────────
@@ -129,22 +131,25 @@ function applyConfig(config) {
     usdRate           = config.usdRate || 32;
   } else {
     // v1 migration: wrap existing data into single profile
+    const migratedHistory = (config.historicalRecords || []).map(r => {
+      if (r.date) return r;
+      if (typeof r.year === 'number') return { date: `${r.year}-12-31`, value: r.value };
+      return r;
+    }).sort((a, b) => a.date.localeCompare(b.date));
     profiles = [{
       id:               'p1',
       name:             '我的資產',
       holdings:         config.holdings || [],
       targetAllocations: config.targetAllocations || { tw_stock: 0, us_stock: 0, cash: 0, bond: 0, crypto: 0 },
+      historicalRecords: migratedHistory,
     }];
-    historicalRecords = (config.historicalRecords || []).map(r => {
-      if (r.date) return r;
-      if (typeof r.year === 'number') return { date: `${r.year}-12-31`, value: r.value };
-      return r;
-    }).sort((a, b) => a.date.localeCompare(b.date));
+    historicalRecords = migratedHistory;
     usdRate = config.usdRate || 32;
   }
   profiles.forEach(p => {
     holdingsSortBy[p.id] = holdingsSortBy[p.id] || 'none';
-    if (!p.targetAllocations) p.targetAllocations = { tw_stock: 0, us_stock: 0, cash: 0, bond: 0, crypto: 0 };
+    if (!p.targetAllocations)   p.targetAllocations = { tw_stock: 0, us_stock: 0, cash: 0, bond: 0, crypto: 0 };
+    if (!p.historicalRecords)   p.historicalRecords = [];
   });
 }
 
@@ -369,6 +374,8 @@ function deleteProfile(id) {
   if (!confirm(`確定要刪除「${p.name}」的所有資料？`)) return;
   profiles = profiles.filter(pr => pr.id !== id);
   delete holdingsSortBy[id];
+  if (profileCharts[id]) { profileCharts[id].destroy(); delete profileCharts[id]; }
+  if (profileHistoricalCharts[id]) { profileHistoricalCharts[id].destroy(); delete profileHistoricalCharts[id]; }
   const panel = document.getElementById(`panel-${id}`);
   if (panel) panel.remove();
   saveData();
@@ -482,6 +489,50 @@ function buildProfilePanelHTML(p) {
         <div class="empty-state">尚無持股，請新增資產</div>
       </div>
     </div>
+  </div>
+  <!-- Profile chart -->
+  <div class="card chart-card">
+    <div class="card-header">
+      <h2>資產配置</h2>
+      <button class="btn-collapse" onclick="toggleCard('body-chart-${pid}')">−</button>
+    </div>
+    <div class="card-body" id="body-chart-${pid}">
+      <div class="chart-wrapper">
+        <canvas id="profileChart-${pid}"></canvas>
+      </div>
+      <div id="profile-chart-legend-${pid}" class="chart-legend"></div>
+    </div>
+  </div>
+  <!-- Profile historical records -->
+  <div class="card">
+    <div class="card-header">
+      <h2>歷史資產紀錄</h2>
+      <button class="btn-collapse" onclick="toggleCard('body-phist-${pid}')">−</button>
+    </div>
+    <div class="card-body" id="body-phist-${pid}">
+      <div class="history-actions">
+        <button class="btn btn-primary" onclick="saveProfileAssets('${pid}')">📌 記錄今日資產</button>
+      </div>
+      <div class="form-row" style="margin-top:12px">
+        <div class="form-group">
+          <label>日期</label>
+          <input type="date" id="phist-date-${pid}" />
+        </div>
+        <div class="form-group">
+          <label>資產總值 (TWD)</label>
+          <input type="number" id="phist-value-${pid}" placeholder="1000000" min="0" step="any" />
+        </div>
+      </div>
+      <button class="btn btn-secondary" onclick="addProfileHistoricalRecord('${pid}')">手動新增</button>
+      <h3 style="margin-top:1.5rem">資產趨勢圖</h3>
+      <div class="historical-chart-wrapper">
+        <canvas id="profileHistChart-${pid}"></canvas>
+      </div>
+      <h3 style="margin-top:1.5rem">紀錄明細</h3>
+      <div id="phist-list-${pid}" class="records-list">
+        <p class="empty-state">尚無紀錄</p>
+      </div>
+    </div>
   </div>`;
 }
 
@@ -561,6 +612,9 @@ function renderProfilePanel(pid) {
   updateTargetTotalBar(pid);
   renderAllocationComparison(pid);
   renderHoldings(pid);
+  renderProfileChart(pid);
+  renderProfileHistoricalChart(pid);
+  renderProfileHistoricalRecordsList(pid);
 }
 
 // ─── Overview 渲染 ────────────────────────────────────────────────────────────
@@ -1215,6 +1269,202 @@ function renderChart() {
       </div>`;
   }).join('');
   document.getElementById('chart-legend').innerHTML = legendHtml;
+}
+
+// ─── Per-profile 圓餅圖 ───────────────────────────────────────────────────────
+function renderProfileChart(pid) {
+  const p = getProfile(pid);
+  if (!p) return;
+  const canvas = document.getElementById(`profileChart-${pid}`);
+  if (!canvas) return;
+
+  const totals = { tw_stock: 0, us_stock: 0, cash: 0, bond: 0, crypto: 0 };
+  p.holdings.forEach(h => { totals[h.category] = (totals[h.category] || 0) + getHoldingValueTWD(h); });
+  const total   = Object.values(totals).reduce((a, b) => a + b, 0);
+  const entries = Object.entries(totals).filter(([, v]) => v > 0);
+
+  if (profileCharts[pid]) { profileCharts[pid].destroy(); }
+
+  if (entries.length === 0) {
+    document.getElementById(`profile-chart-legend-${pid}`).innerHTML = '';
+    return;
+  }
+
+  profileCharts[pid] = new Chart(canvas.getContext('2d'), {
+    type: 'doughnut',
+    data: {
+      labels:   entries.map(([k]) => CATEGORY_LABELS[k]),
+      datasets: [{ data: entries.map(([, v]) => v), backgroundColor: entries.map(([k]) => CATEGORY_COLORS[k]), borderColor: '#1e2330', borderWidth: 3, hoverOffset: 8 }]
+    },
+    options: {
+      responsive: true, cutout: '62%',
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: ctx => ` ${formatTWD(ctx.raw)} (${total > 0 ? (ctx.raw / total * 100).toFixed(1) : 0}%)` } }
+      }
+    }
+  });
+
+  document.getElementById(`profile-chart-legend-${pid}`).innerHTML = entries.map(([k, v]) => `
+    <div class="legend-item">
+      <div class="legend-left"><div class="legend-dot" style="background:${CATEGORY_COLORS[k]}"></div><span>${CATEGORY_LABELS[k]}</span></div>
+      <span class="legend-pct">${total > 0 ? (v / total * 100).toFixed(1) : '0.0'}%</span>
+    </div>`).join('');
+}
+
+// ─── Per-profile 歷史紀錄 ─────────────────────────────────────────────────────
+function getProfileSubtotal(pid) {
+  const p = getProfile(pid);
+  return p ? p.holdings.reduce((s, h) => s + getHoldingValueTWD(h), 0) : 0;
+}
+
+function saveProfileAssets(pid) {
+  const p = getProfile(pid);
+  if (!p) return;
+  const total = getProfileSubtotal(pid);
+  if (total === 0) { alert('目前沒有資產數據，請先更新股價後再記錄'); return; }
+  const today    = new Date().toISOString().split('T')[0];
+  const existing = p.historicalRecords.findIndex(r => r.date === today);
+  if (existing >= 0) {
+    if (!confirm(`${today} 已有紀錄（${formatTWD(p.historicalRecords[existing].value)}），是否覆蓋？`)) return;
+    p.historicalRecords[existing].value = total;
+  } else {
+    p.historicalRecords.push({ date: today, value: total });
+  }
+  p.historicalRecords.sort((a, b) => a.date.localeCompare(b.date));
+  saveData();
+  renderProfileHistoricalRecordsList(pid);
+  renderProfileHistoricalChart(pid);
+}
+
+function addProfileHistoricalRecord(pid) {
+  const p = getProfile(pid);
+  if (!p) return;
+  const dateVal = document.getElementById(`phist-date-${pid}`).value;
+  const value   = parseFloat(document.getElementById(`phist-value-${pid}`).value);
+  if (!dateVal || isNaN(value) || value < 0) { alert('請輸入有效的日期和資產總值'); return; }
+  const existing = p.historicalRecords.findIndex(r => r.date === dateVal);
+  if (existing >= 0) {
+    if (!confirm(`${dateVal} 已有紀錄，是否覆蓋？`)) return;
+    p.historicalRecords[existing].value = value;
+  } else {
+    p.historicalRecords.push({ date: dateVal, value });
+  }
+  p.historicalRecords.sort((a, b) => a.date.localeCompare(b.date));
+  document.getElementById(`phist-date-${pid}`).value  = '';
+  document.getElementById(`phist-value-${pid}`).value = '';
+  saveData();
+  renderProfileHistoricalRecordsList(pid);
+  renderProfileHistoricalChart(pid);
+}
+
+function deleteProfileHistoricalRecord(pid, date) {
+  const p = getProfile(pid);
+  if (!p) return;
+  if (!confirm(`確定要刪除 ${date} 的紀錄？`)) return;
+  p.historicalRecords = p.historicalRecords.filter(r => r.date !== date);
+  saveData();
+  renderProfileHistoricalRecordsList(pid);
+  renderProfileHistoricalChart(pid);
+}
+
+function renderProfileHistoricalChart(pid) {
+  const p = getProfile(pid);
+  if (!p) return;
+  const canvas = document.getElementById(`profileHistChart-${pid}`);
+  if (!canvas) return;
+
+  const today  = new Date().toISOString().split('T')[0];
+  const nowRec = { date: today, value: getProfileSubtotal(pid), isNow: true };
+  const allRecords = [...p.historicalRecords, nowRec]
+    .filter((r, i, arr) => arr.findIndex(x => x.date === r.date) === i)
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  if (profileHistoricalCharts[pid]) { profileHistoricalCharts[pid].destroy(); profileHistoricalCharts[pid] = null; }
+  if (allRecords.length < 2) return;
+
+  const dataPoints = allRecords.map(r => ({ x: new Date(r.date + 'T00:00:00').getTime(), y: r.value }));
+  const minYear = new Date(allRecords[0].date).getFullYear();
+  const maxYear = new Date(allRecords[allRecords.length - 1].date).getFullYear();
+  const yearTickValues = [];
+  for (let y = minYear; y <= maxYear; y++) yearTickValues.push(new Date(`${y}-01-01T00:00:00`).getTime());
+
+  profileHistoricalCharts[pid] = new Chart(canvas.getContext('2d'), {
+    type: 'line',
+    data: {
+      datasets: [{
+        label: '資產總值', data: dataPoints,
+        borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.1)', fill: true, tension: 0.3,
+        pointRadius: allRecords.map(r => r.isNow ? 8 : 5),
+        pointBackgroundColor: allRecords.map(r => r.isNow ? '#f97316' : '#3b82f6'),
+        pointBorderColor: '#fff', pointBorderWidth: 2, pointHoverRadius: 10,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: {
+          title: items => new Date(items[0].parsed.x).toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' }),
+          label: ctx => ` ${formatTWD(ctx.parsed.y)}`,
+        }}
+      },
+      scales: {
+        x: {
+          type: 'linear',
+          afterBuildTicks: axis => { axis.ticks = yearTickValues.map(v => ({ value: v })); },
+          ticks: { color: '#94a3b8', maxRotation: 0, callback: v => new Date(v).getFullYear().toString() },
+          grid: { color: '#2d3748' }
+        },
+        y: {
+          beginAtZero: false,
+          ticks: { stepSize: 1_000_000, color: '#94a3b8', callback: v => {
+            if (Math.abs(v) >= 100_000_000) return (v / 100_000_000).toFixed(0) + '億';
+            if (Math.abs(v) >= 10_000_000)  return (v / 10_000_000).toFixed(0) + '千萬';
+            if (Math.abs(v) >= 1_000_000)   return (v / 1_000_000).toFixed(0) + 'M';
+            if (Math.abs(v) >= 10_000)       return (v / 10_000).toFixed(0) + '萬';
+            return v;
+          }},
+          grid: { color: '#2d3748' }
+        }
+      }
+    }
+  });
+}
+
+function renderProfileHistoricalRecordsList(pid) {
+  const p = getProfile(pid);
+  if (!p) return;
+  const container = document.getElementById(`phist-list-${pid}`);
+  if (!container) return;
+
+  const today  = new Date().toISOString().split('T')[0];
+  const nowRec = { date: today, value: getProfileSubtotal(pid), isNow: true };
+  const allRecords = [...p.historicalRecords, nowRec]
+    .filter((r, i, arr) => arr.findIndex(x => x.date === r.date) === i)
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  if (!allRecords.length) { container.innerHTML = '<p class="empty-state">尚無紀錄</p>'; return; }
+
+  container.innerHTML = allRecords.map((r, i) => {
+    let growthHtml = '';
+    if (i > 0) {
+      const prev   = allRecords[i - 1];
+      const growth = prev.value > 0 ? ((r.value - prev.value) / prev.value * 100).toFixed(2) : 0;
+      const delta  = r.value - prev.value;
+      const sign   = growth > 0 ? '+' : '';
+      const color  = growth > 0 ? '#22c55e' : growth < 0 ? '#ef4444' : '#94a3b8';
+      growthHtml = `<span style="color:${color};font-size:0.82rem;white-space:nowrap">${sign}${growth}%&nbsp;(${sign}${formatTWD(delta)})</span>`;
+    }
+    const label = r.isNow ? `${r.date} 現在` : r.date;
+    return `
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:0.5rem;padding:0.6rem 0.75rem;border-bottom:1px solid #2d3748;flex-wrap:wrap">
+        <span style="font-weight:600;min-width:90px;font-size:0.82rem;color:${r.isNow ? '#f97316' : '#e2e8f0'}">${label}</span>
+        <span style="min-width:90px;font-size:0.9rem">${formatTWD(r.value)}</span>
+        <span style="flex:1">${growthHtml}</span>
+        ${!r.isNow ? `<button class="btn btn-danger" onclick="deleteProfileHistoricalRecord('${pid}','${r.date}')" style="padding:0.2rem 0.5rem;font-size:0.72rem">刪除</button>` : ''}
+      </div>`;
+  }).join('');
 }
 
 // ─── 工具函式 ────────────────────────────────────────────────────────────────
