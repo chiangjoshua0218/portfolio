@@ -271,13 +271,43 @@ function importConfig(event) {
   reader.onload = (e) => {
     try {
       const config = JSON.parse(e.target.result);
-      applyConfig(config);
+      let newProfiles = [];
+
+      if (config.version === 2 && Array.isArray(config.profiles)) {
+        newProfiles = config.profiles;
+        if (usdRate === 32 && config.usdRate) usdRate = config.usdRate;
+        if (historicalRecords.length === 0 && Array.isArray(config.historicalRecords)) {
+          historicalRecords = config.historicalRecords;
+        }
+      } else {
+        // v1 格式 → 以檔名作為帳戶名稱
+        const name = file.name.replace(/\.json$/i, '');
+        newProfiles = [{
+          id:               'p' + Date.now(),
+          name,
+          holdings:         config.holdings || [],
+          targetAllocations: config.targetAllocations || { tw_stock: 0, us_stock: 0, cash: 0, bond: 0, crypto: 0 },
+        }];
+        if (usdRate === 32 && config.usdRate) usdRate = config.usdRate;
+        if (historicalRecords.length === 0 && Array.isArray(config.historicalRecords)) {
+          historicalRecords = config.historicalRecords;
+        }
+      }
+
+      // 避免 ID 衝突
+      newProfiles.forEach(p => {
+        while (!p.id || profiles.find(x => x.id === p.id)) p.id = 'p' + Date.now() + Math.floor(Math.random() * 1000);
+        if (!p.targetAllocations) p.targetAllocations = { tw_stock: 0, us_stock: 0, cash: 0, bond: 0, crypto: 0 };
+        holdingsSortBy[p.id] = 'none';
+        profiles.push(p);
+      });
+
       saveData();
       renderAll();
-      const totalHoldings = profiles.reduce((s, p) => s + p.holdings.length, 0);
-      alert(`已載入 ${profiles.length} 個帳戶，共 ${totalHoldings} 筆資產`);
+      if (newProfiles.length > 0) switchTab(newProfiles[newProfiles.length - 1].id);
+      alert(`已新增 ${newProfiles.length} 個帳戶`);
     } catch {
-      alert('設定檔格式錯誤，請確認是正確的 portfolio.json');
+      alert('設定檔格式錯誤，請確認是正確的 JSON 檔案');
     }
   };
   reader.readAsText(file);
