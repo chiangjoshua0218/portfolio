@@ -13,7 +13,13 @@ html_content = """
 <body>
   <div class="container">
     <header>
-      <h1>📊 資產總覽</h1>
+      <div class="header-title">
+        <h1>📊 資產總覽</h1>
+        <div class="version-info">
+          <span class="version-tag">v1.0.1</span>
+          <span class="author-tag">by joshchiang0218</span>
+        </div>
+      </div>
       <div class="header-actions">
         <span id="last-updated" class="last-updated">尚未更新</span>
         <label class="btn btn-secondary" title="載入 portfolio.json">
@@ -32,6 +38,7 @@ html_content = """
       <div class="card summary-card">
         <div class="card-label">總資產</div>
         <div class="card-value" id="total-value">—</div>
+        <div id="total-change" class="summary-change"></div>
       </div>
       <div class="card summary-card">
         <div class="card-label">台股</div>
@@ -192,17 +199,20 @@ html_content = """
             <button class="btn-collapse" onclick="toggleCard('body-history')">−</button>
           </div>
           <div class="card-body" id="body-history">
-          <div class="form-row">
+          <div class="history-actions">
+            <button class="btn btn-primary" onclick="saveCurrentAssets()">📌 記錄今日資產</button>
+          </div>
+          <div class="form-row" style="margin-top:12px">
             <div class="form-group">
-              <label for="historical-year">年度</label>
-              <input type="number" id="historical-year" placeholder="2023" min="1900" max="2100" />
+              <label for="historical-date">日期</label>
+              <input type="date" id="historical-date" />
             </div>
             <div class="form-group">
               <label for="historical-value">資產總值 (TWD)</label>
               <input type="number" id="historical-value" placeholder="1000000" min="0" step="any" />
             </div>
           </div>
-          <button class="btn btn-primary" onclick="addHistoricalRecord()">新增紀錄</button>
+          <button class="btn btn-secondary" onclick="addHistoricalRecord()">手動新增</button>
 
           <h3>資產趨勢圖</h3>
           <div class="historical-chart-wrapper">

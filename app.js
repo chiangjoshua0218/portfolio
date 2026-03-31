@@ -1,5 +1,6 @@
 // 在 https:// 環境（GitHub Pages 等）直連 Yahoo / TWSE 都會被 CORS 擋，直接跳過
 const IS_WEB_HOSTED = location.protocol === 'https:';
+const VERSION = '1.0.1';
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
 const CATEGORY_LABELS = {
@@ -117,7 +118,14 @@ function applyConfig(config) {
   if (Array.isArray(config.holdings)) holdings = config.holdings;
   if (config.usdRate) usdRate = config.usdRate;
   if (config.targetAllocations) targetAllocations = { ...targetAllocations, ...config.targetAllocations };
-  if (Array.isArray(config.historicalRecords)) historicalRecords = config.historicalRecords;
+  if (Array.isArray(config.historicalRecords)) {
+    // 遷移舊格式 { year, value } → 新格式 { date: "YYYY-12-31", value }
+    historicalRecords = config.historicalRecords.map(r => {
+      if (r.date) return r;
+      if (typeof r.year === 'number') return { date: `${r.year}-12-31`, value: r.value };
+      return r;
+    }).sort((a, b) => a.date.localeCompare(b.date));
+  }
   document.getElementById('usd-rate').value = usdRate;
 }
 
@@ -458,11 +466,12 @@ async function fetchPriceForHolding(holding) {
 
 // 解析價格字串，回傳有效正數或 null（處理 TWSE 的 "-" 等無效值）
 function parsePrice(val) {
+  if (typeof val === 'string') val = val.replace(/,/g, '').trim();
   const n = parseFloat(val);
   return (isFinite(n) && n > 0) ? n : null;
 }
 
-// 台股：優先用 TWSE / TPEX Open API（公開 API，有正確 CORS header）
+// 台股：優先用 TWSE mis 即時 API（含當天漲跌），再 fallback 到收盤資料
 async function fetchTWStockPrice(holding) {
   const symbol = holding.symbol.replace(/\.TW$/i, '').toUpperCase();
 
@@ -483,7 +492,33 @@ async function fetchTWStockPrice(holding) {
     return null;
   }
 
-  // 1. TWSE Open API（上市）
+  // 1. TWSE mis 即時 API（優先：z=當盤成交價, y=昨收，最能反映當天漲跌）
+  for (const market of ['tse', 'otc']) {
+    const misUrl = `https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=${market}_${symbol.toLowerCase()}.tw&json=1&delay=0`;
+    try {
+      const json = await tryFetch(misUrl);
+      const item = json?.msgArray?.[0];
+      if (!item) continue;
+      // z=當盤成交價（盤中）或最後成交價，y=昨收
+      const price    = parsePrice(item.z);
+      const prevClose = parsePrice(item.y);
+      if (price && prevClose) {
+        holding.currentPrice  = price;
+        holding.currency      = 'TWD';
+        holding.previousClose = prevClose;
+        return;
+      }
+      // 盤前/收盤後 z="-"：用 y 當現價，不顯示漲跌
+      if (prevClose) {
+        holding.currentPrice = prevClose;
+        holding.currency     = 'TWD';
+        // 不設 previousClose → 不顯示漲跌幅（今日尚無成交）
+        return;
+      }
+    } catch {}
+  }
+
+  // 2. TWSE Open API（上市，收盤後補充）
   try {
     const data = await tryFetch(`https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY?stockNo=${symbol}`);
     if (Array.isArray(data) && data.length > 0) {
@@ -492,14 +527,15 @@ async function fetchTWStockPrice(holding) {
       if (price) {
         holding.currentPrice = price;
         holding.currency     = 'TWD';
-        const prev = price - parseFloat(last.Change || 0);
+        const change = parseFloat((last.Change || '0').replace(/,/g, '').replace(/^\+/, ''));
+        const prev   = price - change;
         if (prev > 0) holding.previousClose = prev;
         return;
       }
     }
   } catch {}
 
-  // 2. TPEX Open API（上櫃）
+  // 3. TPEX Open API（上櫃）
   try {
     const data = await tryFetch('https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes');
     if (Array.isArray(data)) {
@@ -508,30 +544,13 @@ async function fetchTWStockPrice(holding) {
       if (price) {
         holding.currentPrice = price;
         holding.currency     = 'TWD';
-        const prev = price - parseFloat(row.Change || 0);
+        const change = parseFloat((row.Change || '0').replace(/,/g, '').replace(/^\+/, ''));
+        const prev   = price - change;
         if (prev > 0) holding.previousClose = prev;
         return;
       }
     }
   } catch {}
-
-  // 3. TWSE mis 即時 API
-  for (const market of ['tse', 'otc']) {
-    const misUrl = `https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=${market}_${symbol.toLowerCase()}.tw&json=1&delay=0`;
-    try {
-      const json = await tryFetch(misUrl);
-      const item = json?.msgArray?.[0];
-      if (!item) continue;
-      const price = parsePrice(item.z) ?? parsePrice(item.y) ?? parsePrice(item.b) ?? parsePrice(item.a);
-      if (price) {
-        holding.currentPrice = price;
-        holding.currency     = 'TWD';
-        const prev = parsePrice(item.y);
-        if (prev) holding.previousClose = prev;
-        return;
-      }
-    } catch {}
-  }
 
   // 4. 最後：Yahoo Finance
   await fetchViaYahoo(`${symbol}.TW`, holding, 'TWD');
@@ -754,6 +773,29 @@ function updateSummary() {
   document.getElementById('cash-value').textContent   = formatTWD(totals.cash);
   document.getElementById('bond-value').textContent   = formatTWD(totals.bond);
   document.getElementById('crypto-value').textContent = formatTWD(totals.crypto);
+
+  // 計算今日總資產變化
+  let totalDayChange = 0;
+  let hasAnyChange = false;
+  holdings.forEach(h => {
+    if (h.currentPrice && h.previousClose && h.category !== 'cash') {
+      const diff = toTWD((h.currentPrice - h.previousClose) * h.qty, h.currency);
+      totalDayChange += diff;
+      hasAnyChange = true;
+    }
+  });
+  const changeEl = document.getElementById('total-change');
+  if (changeEl) {
+    if (hasAnyChange) {
+      const sign  = totalDayChange >= 0 ? '+' : '';
+      const pct   = total > 0 ? (totalDayChange / (total - totalDayChange) * 100).toFixed(2) : '0.00';
+      const color = totalDayChange > 0 ? '#22c55e' : totalDayChange < 0 ? '#ef4444' : '#94a3b8';
+      changeEl.style.color = color;
+      changeEl.textContent = `今日 ${sign}${pct}% (${sign}${formatTWD(totalDayChange)})`;
+    } else {
+      changeEl.textContent = '';
+    }
+  }
 }
 
 function renderCharts() {
@@ -936,80 +978,115 @@ function escHtml(str) {
 }
 
 // ─── 歷史資產紀錄 ────────────────────────────────────────────────────────────
-function addHistoricalRecord() {
-  const year = parseInt(document.getElementById('historical-year').value);
-  const value = parseFloat(document.getElementById('historical-value').value);
 
-  if (!year || isNaN(value) || value < 0) {
-    alert('請輸入有效的年度和資產總值');
+// 取得當前總資產（供歷史紀錄用）
+function getCurrentTotal() {
+  return holdings.reduce((sum, h) => sum + getHoldingValueTWD(h), 0);
+}
+
+// 「記錄今日資產」按鈕
+function saveCurrentAssets() {
+  const total = getCurrentTotal();
+  if (total === 0) {
+    alert('目前沒有資產數據，請先更新股價後再記錄');
+    return;
+  }
+  const today = new Date().toISOString().split('T')[0];
+  const existing = historicalRecords.findIndex(r => r.date === today);
+  if (existing >= 0) {
+    if (!confirm(`${today} 已有紀錄（${formatTWD(historicalRecords[existing].value)}），是否覆蓋為目前的 ${formatTWD(total)}？`)) return;
+    historicalRecords[existing].value = total;
+  } else {
+    historicalRecords.push({ date: today, value: total });
+  }
+  historicalRecords.sort((a, b) => a.date.localeCompare(b.date));
+  saveData();
+  renderHistoricalRecordsList();
+  renderHistoricalChart();
+}
+
+// 手動新增歷史紀錄（日期 + 金額）
+function addHistoricalRecord() {
+  const dateVal = document.getElementById('historical-date').value;
+  const value   = parseFloat(document.getElementById('historical-value').value);
+
+  if (!dateVal || isNaN(value) || value < 0) {
+    alert('請輸入有效的日期和資產總值');
     return;
   }
 
-  // 檢查年度是否已存在，若有則更新
-  const existing = historicalRecords.findIndex(r => r.year === year);
+  const existing = historicalRecords.findIndex(r => r.date === dateVal);
   if (existing >= 0) {
-    if (!confirm(`${year} 年已有紀錄，是否覆蓋？`)) return;
+    if (!confirm(`${dateVal} 已有紀錄，是否覆蓋？`)) return;
     historicalRecords[existing].value = value;
   } else {
-    historicalRecords.push({ year, value });
+    historicalRecords.push({ date: dateVal, value });
   }
 
-  // 按年度排序
-  historicalRecords.sort((a, b) => a.year - b.year);
+  historicalRecords.sort((a, b) => a.date.localeCompare(b.date));
 
-  // 清空輸入欄
-  document.getElementById('historical-year').value = '';
+  document.getElementById('historical-date').value  = '';
   document.getElementById('historical-value').value = '';
 
   saveData();
   renderHistoricalRecordsList();
   renderHistoricalChart();
-  updateGrowthRates();
 }
 
+// 取得「現在」的虛擬紀錄點
 function getNowRecord() {
-  const totals = { tw_stock: 0, us_stock: 0, cash: 0, bond: 0, crypto: 0 };
-  holdings.forEach(h => {
-    totals[h.category] = (totals[h.category] || 0) + getHoldingValueTWD(h);
-  });
-  const total = Object.values(totals).reduce((a, b) => a + b, 0);
-  return { year: 'Now', value: total };
+  const today = new Date().toISOString().split('T')[0];
+  return { date: today, value: getCurrentTotal(), isNow: true };
 }
 
+// 折線圖（X 軸依真實日期比例）
 function renderHistoricalChart() {
   const canvas = document.getElementById('historicalAssetChart');
   if (!canvas) return;
 
-  // 合併歷史紀錄和"Now"紀錄
-  const allRecords = [...historicalRecords, getNowRecord()];
+  const nowRec    = getNowRecord();
+  const allRecords = [...historicalRecords, nowRec]
+    .filter((r, i, arr) => arr.findIndex(x => x.date === r.date) === i) // 去重（今天若已有記錄）
+    .sort((a, b) => a.date.localeCompare(b.date));
 
   if (allRecords.length < 2) {
-    if (historicalChart) historicalChart.destroy();
+    if (historicalChart) { historicalChart.destroy(); historicalChart = null; }
     return;
   }
 
   const ctx = canvas.getContext('2d');
-  const years = allRecords.map(r => r.year.toString());
-  const values = allRecords.map(r => r.value);
+
+  // 用 timestamp 做 X 軸 → 比例正確
+  const dataPoints = allRecords.map(r => ({
+    x: new Date(r.date + 'T00:00:00').getTime(),
+    y: r.value,
+  }));
+
+  // 每年 1/1 作為刻度
+  const minYear = new Date(allRecords[0].date).getFullYear();
+  const maxYear = new Date(allRecords[allRecords.length - 1].date).getFullYear();
+  const yearTickValues = [];
+  for (let y = minYear; y <= maxYear; y++) {
+    yearTickValues.push(new Date(`${y}-01-01T00:00:00`).getTime());
+  }
 
   if (historicalChart) historicalChart.destroy();
 
   historicalChart = new Chart(ctx, {
     type: 'line',
     data: {
-      labels: years,
       datasets: [{
-        label: '資產總值 (TWD)',
-        data: values,
+        label: '資產總值',
+        data: dataPoints,
         borderColor: '#3b82f6',
         backgroundColor: 'rgba(59, 130, 246, 0.1)',
         fill: true,
         tension: 0.3,
-        pointRadius: 6,
-        pointBackgroundColor: '#3b82f6',
+        pointRadius: allRecords.map(r => r.isNow ? 8 : 5),
+        pointBackgroundColor: allRecords.map(r => r.isNow ? '#f97316' : '#3b82f6'),
         pointBorderColor: '#fff',
         pointBorderWidth: 2,
-        pointHoverRadius: 8,
+        pointHoverRadius: 10,
       }]
     },
     options: {
@@ -1019,14 +1096,23 @@ function renderHistoricalChart() {
         legend: { display: false },
         tooltip: {
           callbacks: {
-            label: ctx => ` ${formatTWD(ctx.raw)}`
+            title: items => new Date(items[0].parsed.x).toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' }),
+            label: ctx  => ` ${formatTWD(ctx.parsed.y)}`,
           }
         }
       },
       scales: {
         x: {
-          ticks: { maxTicksLimit: allRecords.length, color: '#94a3b8' },
-          grid:  { color: '#2d3748' }
+          type: 'linear',
+          afterBuildTicks: axis => {
+            axis.ticks = yearTickValues.map(v => ({ value: v }));
+          },
+          ticks: {
+            color: '#94a3b8',
+            maxRotation: 0,
+            callback: v => new Date(v).getFullYear().toString(),
+          },
+          grid: { color: '#2d3748' }
         },
         y: {
           beginAtZero: false,
@@ -1036,6 +1122,7 @@ function renderHistoricalChart() {
             callback: v => {
               if (Math.abs(v) >= 100_000_000) return (v / 100_000_000).toFixed(0) + '億';
               if (Math.abs(v) >= 10_000_000)  return (v / 10_000_000).toFixed(0) + '千萬';
+              if (Math.abs(v) >= 1_000_000)   return (v / 1_000_000).toFixed(0) + 'M';
               if (Math.abs(v) >= 10_000)       return (v / 10_000).toFixed(0) + '萬';
               return v;
             }
@@ -1047,15 +1134,15 @@ function renderHistoricalChart() {
   });
 }
 
+// 紀錄清單（顯示完整日期）
 function renderHistoricalRecordsList() {
   const container = document.getElementById('historical-records-list');
   if (!container) return;
 
-  const allRecords = [...historicalRecords, getNowRecord()].sort((a, b) => {
-    if (a.year === 'Now') return 1;
-    if (b.year === 'Now') return -1;
-    return a.year - b.year;
-  });
+  const nowRec     = getNowRecord();
+  const allRecords = [...historicalRecords, nowRec]
+    .filter((r, i, arr) => arr.findIndex(x => x.date === r.date) === i)
+    .sort((a, b) => a.date.localeCompare(b.date));
 
   if (!allRecords.length) {
     container.innerHTML = '<p class="empty-state">尚無紀錄</p>';
@@ -1065,28 +1152,29 @@ function renderHistoricalRecordsList() {
   container.innerHTML = allRecords.map((r, i) => {
     let growthHtml = '';
     if (i > 0) {
-      const prev = allRecords[i - 1];
+      const prev   = allRecords[i - 1];
       const growth = prev.value > 0 ? ((r.value - prev.value) / prev.value * 100).toFixed(2) : 0;
       const delta  = r.value - prev.value;
       const sign   = growth > 0 ? '+' : '';
       const color  = growth > 0 ? '#22c55e' : growth < 0 ? '#ef4444' : '#94a3b8';
-      growthHtml = `<span style="color:${color};font-size:0.85rem">${sign}${growth}%&nbsp;(${sign}${formatTWD(delta)})</span>`;
+      growthHtml = `<span style="color:${color};font-size:0.82rem;white-space:nowrap">${sign}${growth}%&nbsp;(${sign}${formatTWD(delta)})</span>`;
     }
+    const label = r.isNow ? `${r.date} 現在` : r.date;
     return `
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:0.5rem;padding:0.75rem;border-bottom:1px solid #2d3748">
-        <span style="font-weight:600;min-width:50px">${r.year}</span>
-        <span style="flex:1">${formatTWD(r.value)}</span>
-        ${growthHtml}
-        ${r.year !== 'Now' ? `<button class="btn btn-danger" onclick="deleteHistoricalRecord(${r.year})" style="padding:0.2rem 0.5rem;font-size:0.75rem">刪除</button>` : ''}
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:0.5rem;padding:0.6rem 0.75rem;border-bottom:1px solid #2d3748;flex-wrap:wrap">
+        <span style="font-weight:600;min-width:90px;font-size:0.82rem;color:${r.isNow ? '#f97316' : '#e2e8f0'}">${label}</span>
+        <span style="min-width:90px;font-size:0.9rem">${formatTWD(r.value)}</span>
+        <span style="flex:1">${growthHtml}</span>
+        ${!r.isNow ? `<button class="btn btn-danger" onclick="deleteHistoricalRecord('${r.date}')" style="padding:0.2rem 0.5rem;font-size:0.72rem">刪除</button>` : ''}
       </div>`;
   }).join('');
 }
 
 function updateGrowthRates() {} // 已合併至 renderHistoricalRecordsList
 
-function deleteHistoricalRecord(year) {
-  if (!confirm(`確定要刪除 ${year} 年的紀錄？`)) return;
-  historicalRecords = historicalRecords.filter(r => r.year !== year);
+function deleteHistoricalRecord(date) {
+  if (!confirm(`確定要刪除 ${date} 的紀錄？`)) return;
+  historicalRecords = historicalRecords.filter(r => r.date !== date);
   saveData();
   renderHistoricalRecordsList();
   renderHistoricalChart();
