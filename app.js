@@ -1,4 +1,4 @@
-const VERSION = '2.3.2';
+const VERSION = '2.3.3';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -32,6 +32,8 @@ let profileCharts         = {}; // { [pid]: Chart instance }
 let profileHistoricalCharts = {}; // { [pid]: Chart instance }
 let holdingsSortBy        = {}; // { [profileId]: 'none'|'value' }
 let holdingsEditMode      = {}; // { [profileId]: boolean }
+let isRefreshing          = false;
+const yahooSuffixCache    = {}; // { [symbol]: '.TW'|'.TWO' } 快取已知後綴
 let fileHandle            = null;
 const FILE_API_SUPPORTED = 'showOpenFilePicker' in window;
 
@@ -986,6 +988,8 @@ function renderHoldings(pid) {
 
 // ─── 價格抓取 ────────────────────────────────────────────────────────────────
 async function refreshAllPrices() {
+  if (isRefreshing) return;
+  isRefreshing = true;
 
   const allHoldings    = profiles.flatMap(p => p.holdings);
   const twHoldings     = allHoldings.filter(h => !h.manualPrice && (h.category === 'tw_stock' || (h.category === 'bond' && h.currency === 'TWD')));
@@ -1000,6 +1004,7 @@ async function refreshAllPrices() {
   renderAll();
 
   document.getElementById('last-updated').textContent = `最後更新：${new Date().toLocaleString('zh-TW')}`;
+  isRefreshing = false;
 }
 
 // 新增單筆時立即抓價
@@ -1028,9 +1033,18 @@ function parsePrice(val) {
 async function fetchTWStockPrice(holding) {
   const symbol = holding.symbol.replace(/\.TW$/i, '').toUpperCase();
 
-  // 策略0: Yahoo Finance（上市試 .TW，上櫃試 .TWO）
-  await fetchViaYahoo(symbol + '.TW', holding, 'TWD');
-  if (!holding.currentPrice) await fetchViaYahoo(symbol + '.TWO', holding, 'TWD');
+  // 策略0: Yahoo Finance（快取已知後綴；首次未知則先試 .TW 再試 .TWO）
+  const knownSuffix = yahooSuffixCache[symbol];
+  if (knownSuffix) {
+    await fetchViaYahoo(symbol + knownSuffix, holding, 'TWD');
+  } else {
+    await fetchViaYahoo(symbol + '.TW', holding, 'TWD');
+    if (holding.currentPrice) { yahooSuffixCache[symbol] = '.TW'; }
+    else {
+      await fetchViaYahoo(symbol + '.TWO', holding, 'TWD');
+      if (holding.currentPrice) yahooSuffixCache[symbol] = '.TWO';
+    }
+  }
   if (holding.currentPrice) return;
 
   if (!IS_GITHUB_PAGES) {
