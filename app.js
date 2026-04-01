@@ -1,4 +1,4 @@
-const VERSION = '2.1.3';
+const VERSION = '2.2.0';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -445,10 +445,10 @@ function buildProfilePanelHTML(p) {
         <div class="historical-chart-wrapper">
           <canvas id="profileHistChart-${pid}"></canvas>
         </div>
-        <h3 style="margin-top:1.5rem">紀錄明細</h3>
-        <div id="phist-list-${pid}" class="records-list">
-          <p class="empty-state">尚無紀錄</p>
-        </div>
+        <details class="records-details" style="margin-top:1.5rem">
+          <summary>紀錄明細</summary>
+          <div id="phist-list-${pid}" class="records-list"></div>
+        </details>
       </div>
     </div>
   </div>
@@ -864,53 +864,44 @@ function renderHoldings(pid) {
     return;
   }
 
-  container.innerHTML = getSortedHoldings(p.holdings, pid).map(h => {
-    const valueTWD = getHoldingValueTWD(h);
-    const catLabel = CATEGORY_LABELS[h.category];
+  // 按類別分組
+  const groups = {};
+  TARGET_CATS.forEach(c => { groups[c] = []; });
+  p.holdings.forEach(h => { if (groups[h.category]) groups[h.category].push(h); });
 
-    let changeHtml = '';
-    if (h.currentPrice && h.previousClose && h.category !== 'cash') {
-      const priceDiff = h.currentPrice - h.previousClose;
-      const pct       = (priceDiff / h.previousClose * 100).toFixed(2);
-      const posDiff   = toTWD(priceDiff * h.qty, h.currency);
-      const sign      = priceDiff >= 0 ? '+' : '';
-      const color     = priceDiff > 0 ? '#22c55e' : priceDiff < 0 ? '#ef4444' : '#94a3b8';
-      changeHtml = `<div class="holding-change" style="color:${color}">${sign}${pct}%&nbsp;(${sign}${formatTWD(posDiff)})</div>`;
-    }
+  container.innerHTML = `<div class="holdings-grid">${TARGET_CATS.map(cat => {
+    const holdings = groups[cat];
+    const catTotal = holdings.reduce((s, h) => s + getHoldingValueTWD(h), 0);
 
-    let priceHtml = '';
-    if (h.category === 'cash') {
-      priceHtml = `<div class="holding-total">${formatTWD(valueTWD)}</div>
-                   <div class="holding-detail">${h.currency}</div>`;
-    } else if (!h.currentPrice) {
-      priceHtml = `<div class="holding-price-loading">尚無價格</div>`;
-    } else {
-      const priceStr = h.currency === 'USD'
-        ? `$${h.currentPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`
-        : `NT$${h.currentPrice.toLocaleString('zh-TW')}`;
-      priceHtml = `<div class="holding-total">${formatTWD(valueTWD)}</div>
-                   <div class="holding-detail">${priceStr} × ${h.qty.toLocaleString()}</div>
-                   ${changeHtml}`;
-    }
-
-    return `
-      <div class="holding-item">
-        <div class="holding-left">
-          <span class="holding-badge badge-${h.category}">${catLabel}</span>
-          <div>
-            <div class="holding-name">${escHtml(h.name)}</div>
-            ${h.symbol ? `<div class="holding-symbol">${escHtml(h.symbol)}</div>` : ''}
-          </div>
-        </div>
-        <div class="holding-right">
-          <div class="holding-price-info">${priceHtml}</div>
-          <div class="holding-actions">
-            <button class="btn btn-edit" onclick="openEdit('${h.id}','${pid}')">編輯</button>
-            <button class="btn btn-danger" onclick="deleteHolding('${h.id}','${pid}')">刪除</button>
-          </div>
+    const items = holdings.map(h => {
+      const valueTWD = getHoldingValueTWD(h);
+      let changeHtml = '';
+      if (h.currentPrice && h.previousClose && cat !== 'cash') {
+        const priceDiff = h.currentPrice - h.previousClose;
+        const pct       = (priceDiff / h.previousClose * 100).toFixed(2);
+        const sign      = priceDiff >= 0 ? '+' : '';
+        const color     = priceDiff > 0 ? '#22c55e' : priceDiff < 0 ? '#ef4444' : '#94a3b8';
+        changeHtml = `<div class="hblock-change" style="color:${color}">${sign}${pct}%</div>`;
+      }
+      return `<div class="hblock-item">
+        <div class="hblock-name">${escHtml(h.name)}${h.symbol ? `<div class="holding-symbol">${escHtml(h.symbol)}</div>` : ''}</div>
+        <div class="hblock-value">${formatTWD(valueTWD)}</div>
+        ${changeHtml}
+        <div class="hblock-actions">
+          <button class="btn btn-edit" onclick="openEdit('${h.id}','${pid}')">編輯</button>
+          <button class="btn btn-danger" onclick="deleteHolding('${h.id}','${pid}')">刪除</button>
         </div>
       </div>`;
-  }).join('');
+    }).join('');
+
+    return `<div class="hblock">
+      <div class="hblock-header">
+        <span class="holding-badge badge-${cat}">${CATEGORY_LABELS[cat]}</span>
+        ${catTotal > 0 ? `<span class="hblock-total">${formatTWD(catTotal)}</span>` : ''}
+      </div>
+      ${holdings.length === 0 ? '<div class="hblock-empty">—</div>' : `<div class="hblock-items">${items}</div>`}
+    </div>`;
+  }).join('')}</div>`;
 }
 
 // ─── 價格抓取 ────────────────────────────────────────────────────────────────

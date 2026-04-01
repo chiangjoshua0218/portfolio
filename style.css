@@ -210,21 +210,24 @@ header h1 {
 
 .target-inputs {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   gap: 8px;
   margin-bottom: 10px;
 }
 
 .target-row {
+  flex: 1;
   display: flex;
-  justify-content: space-between;
+  flex-direction: column;
   align-items: center;
+  gap: 4px;
 }
 
 .target-row label {
   font-size: 0.8rem;
   color: #94a3b8;
-  min-width: 56px;
+  min-width: unset;
+  text-align: center;
 }
 
 .target-pct-input {
@@ -550,6 +553,85 @@ header h1 {
   display: flex;
   gap: 6px;
 }
+
+/* Holdings grid (5-column blocks) */
+.holdings-grid {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+.hblock {
+  flex: 1;
+  min-width: 0;
+  background: #0f1117;
+  border: 1px solid #2d3748;
+  border-radius: 8px;
+  padding: 10px;
+}
+.hblock-header {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #2d3748;
+}
+.hblock-total {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #f8fafc;
+}
+.hblock-items {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.hblock-item {
+  padding: 5px 0;
+  border-bottom: 1px solid #1e2330;
+}
+.hblock-item:last-child { border-bottom: none; }
+.hblock-name {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #e2e8f0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hblock-value {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #f8fafc;
+  margin-top: 2px;
+}
+.hblock-change {
+  font-size: 0.72rem;
+  margin-top: 1px;
+}
+.hblock-actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+}
+.hblock-empty {
+  color: #475569;
+  font-size: 0.8rem;
+  text-align: center;
+  padding: 8px 0;
+}
+
+/* 紀錄明細可收合 */
+.records-details summary {
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #94a3b8;
+  padding: 6px 0;
+  user-select: none;
+}
+.records-details summary:hover { color: #e2e8f0; }
 
 /* Settings Card */
 .settings-card {
