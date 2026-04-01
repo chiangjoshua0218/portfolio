@@ -18,7 +18,7 @@
       <div class="header-title">
         <h1>📊 資產總覽</h1>
         <div class="version-info">
-          <span class="version-tag">v2.3.3</span>
+          <span class="version-tag">v2.3.4</span>
           <span class="author-tag">by joshchiang0218</span>
         </div>
       </div>
@@ -44,10 +44,12 @@
         <div class="card summary-card">
           <div class="card-label">台股</div>
           <div class="card-value" id="tw-value">—</div>
+          <div id="tw-change" class="summary-change"></div>
         </div>
         <div class="card summary-card">
           <div class="card-label">美股</div>
           <div class="card-value" id="us-value">—</div>
+          <div id="us-change" class="summary-change"></div>
         </div>
         <div class="card summary-card">
           <div class="card-label">現金</div>
@@ -56,10 +58,12 @@
         <div class="card summary-card">
           <div class="card-label">債券</div>
           <div class="card-value" id="bond-value">—</div>
+          <div id="bond-change" class="summary-change"></div>
         </div>
         <div class="card summary-card">
           <div class="card-label">加密貨幣</div>
           <div class="card-value" id="crypto-value">—</div>
+          <div id="crypto-change" class="summary-change"></div>
         </div>
       </div>
 
@@ -232,6 +236,6 @@
     <button class="btn btn-primary" onclick="onRequestPermission()">授權讀取</button>
   </div>
 
-  <script src="app.js?v=2.3.3"></script>
+  <script src="app.js?v=2.3.4"></script>
 </body>
 </html>

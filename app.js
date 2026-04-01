@@ -1,4 +1,4 @@
-const VERSION = '2.3.3';
+const VERSION = '2.3.4';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -597,26 +597,39 @@ function renderOverview() {
   document.getElementById('bond-value').textContent   = formatTWD(totals.bond);
   document.getElementById('crypto-value').textContent = formatTWD(totals.crypto);
 
-  // 今日總變化
+  // 今日各分類變化
+  const catChanges   = { tw_stock: 0, us_stock: 0, bond: 0, crypto: 0 };
+  const catHasChange = { tw_stock: false, us_stock: false, bond: false, crypto: false };
   let totalDayChange = 0, hasAnyChange = false;
   allHoldings.forEach(h => {
     if (h.currentPrice && h.previousClose && h.category !== 'cash') {
-      totalDayChange += toTWD((h.currentPrice - h.previousClose) * h.qty, h.currency);
+      const delta = toTWD((h.currentPrice - h.previousClose) * h.qty, h.currency);
+      totalDayChange += delta;
       hasAnyChange = true;
+      if (catChanges[h.category] !== undefined) {
+        catChanges[h.category] += delta;
+        catHasChange[h.category] = true;
+      }
     }
   });
-  const changeEl = document.getElementById('total-change');
-  if (changeEl) {
-    if (hasAnyChange) {
-      const sign  = totalDayChange >= 0 ? '+' : '';
-      const pct   = total > 0 ? (totalDayChange / (total - totalDayChange) * 100).toFixed(2) : '0.00';
-      const color = totalDayChange > 0 ? '#22c55e' : totalDayChange < 0 ? '#ef4444' : '#94a3b8';
-      changeEl.style.color = color;
-      changeEl.textContent = `今日 ${sign}${pct}% (${sign}${formatTWD(totalDayChange)})`;
-    } else {
-      changeEl.textContent = '';
-    }
-  }
+
+  const applyChange = (elId, change, base) => {
+    const el = document.getElementById(elId);
+    if (!el) return;
+    if (!change && change !== 0) { el.textContent = ''; return; }
+    const sign  = change >= 0 ? '+' : '';
+    const pct   = base > 0 ? (change / (base - change) * 100).toFixed(2) : '0.00';
+    el.style.color = change > 0 ? '#22c55e' : change < 0 ? '#ef4444' : '#94a3b8';
+    el.textContent = `${sign}${pct}% (${sign}${formatTWD(change)})`;
+  };
+
+  if (hasAnyChange) applyChange('total-change', totalDayChange, total);
+  else { const el = document.getElementById('total-change'); if (el) el.textContent = ''; }
+
+  if (catHasChange.tw_stock) applyChange('tw-change',     catChanges.tw_stock, totals.tw_stock);
+  if (catHasChange.us_stock) applyChange('us-change',     catChanges.us_stock, totals.us_stock);
+  if (catHasChange.bond)     applyChange('bond-change',   catChanges.bond,     totals.bond);
+  if (catHasChange.crypto)   applyChange('crypto-change', catChanges.crypto,   totals.crypto);
 
   renderChart();
   renderHistoricalRecordsList();
