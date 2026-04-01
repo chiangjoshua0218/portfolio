@@ -1,4 +1,4 @@
-const VERSION = '2.3.4';
+const VERSION = '2.3.5';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -412,6 +412,7 @@ function buildProfilePanelHTML(p) {
     <div class="card summary-card">
       <div class="card-label">${CATEGORY_LABELS[c]}</div>
       <div class="card-value" id="pcat-${c}-${pid}">—</div>
+      ${c !== 'cash' ? `<div id="pcat-change-${c}-${pid}" class="summary-change"></div>` : ''}
     </div>`).join('')}
   </div>
 
@@ -546,26 +547,39 @@ function renderProfilePanel(pid) {
     if (el) el.textContent = formatTWD(catTotals[c]);
   });
 
-  // 今日變化
+  // 今日各分類變化
+  const catChanges   = { tw_stock: 0, us_stock: 0, bond: 0, crypto: 0 };
+  const catHasChange = { tw_stock: false, us_stock: false, bond: false, crypto: false };
   let dayChange = 0, hasChange = false;
   p.holdings.forEach(h => {
     if (h.currentPrice && h.previousClose && h.category !== 'cash') {
-      dayChange += toTWD((h.currentPrice - h.previousClose) * h.qty, h.currency);
+      const delta = toTWD((h.currentPrice - h.previousClose) * h.qty, h.currency);
+      dayChange += delta;
       hasChange = true;
+      if (catChanges[h.category] !== undefined) {
+        catChanges[h.category] += delta;
+        catHasChange[h.category] = true;
+      }
     }
   });
+
+  const applyChange = (elId, change, base) => {
+    const el = document.getElementById(elId);
+    if (!el) return;
+    const sign  = change >= 0 ? '+' : '';
+    const pct   = base > 0 ? (change / (base - change) * 100).toFixed(2) : '0.00';
+    el.style.color = change > 0 ? '#22c55e' : change < 0 ? '#ef4444' : '#94a3b8';
+    el.textContent = `${sign}${pct}% (${sign}${formatTWD(change)})`;
+  };
+
   const changeEl = document.getElementById(`subtotal-change-${pid}`);
   if (changeEl) {
-    if (hasChange) {
-      const sign  = dayChange >= 0 ? '+' : '';
-      const pct   = subtotal > 0 ? (dayChange / (subtotal - dayChange) * 100).toFixed(2) : '0.00';
-      const color = dayChange > 0 ? '#22c55e' : dayChange < 0 ? '#ef4444' : '#94a3b8';
-      changeEl.style.color = color;
-      changeEl.textContent = `今日 ${sign}${pct}% (${sign}${formatTWD(dayChange)})`;
-    } else {
-      changeEl.textContent = '';
-    }
+    if (hasChange) applyChange(`subtotal-change-${pid}`, dayChange, subtotal);
+    else changeEl.textContent = '';
   }
+  ['tw_stock', 'us_stock', 'bond', 'crypto'].forEach(c => {
+    if (catHasChange[c]) applyChange(`pcat-change-${c}-${pid}`, catChanges[c], catTotals[c]);
+  });
 
   // 目標配置
   TARGET_CATS.forEach(c => {
