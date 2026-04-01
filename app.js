@@ -1,4 +1,4 @@
-const VERSION = '2.4.1';
+const VERSION = '2.5.0';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -660,9 +660,71 @@ function renderOverview() {
   if (catHasChange.bond)     applyChange('bond-change',   catChanges.bond,     totals.bond);
   if (catHasChange.crypto)   applyChange('crypto-change', catChanges.crypto,   totals.crypto);
 
+  renderProfileBreakdown();
   renderChart();
   renderHistoricalRecordsList();
   renderHistoricalChart();
+}
+
+function renderProfileBreakdown() {
+  const el = document.getElementById('profile-breakdown-content');
+  if (!el) return;
+
+  el.innerHTML = profiles.map(p => {
+    const totals = { tw_stock: 0, us_stock: 0, cash: 0, bond: 0, crypto: 0 };
+    const catChanges = { tw_stock: 0, us_stock: 0, bond: 0, crypto: 0 };
+    const catHasChange = { tw_stock: false, us_stock: false, bond: false, crypto: false };
+    let total = 0, totalDayChange = 0, hasAnyChange = false;
+
+    p.holdings.forEach(h => {
+      const val = getHoldingValueTWD(h);
+      totals[h.category] = (totals[h.category] || 0) + val;
+      total += val;
+      if (h.currentPrice && h.previousClose && h.category !== 'cash') {
+        const delta = toTWD((h.currentPrice - h.previousClose) * h.qty, h.currency);
+        totalDayChange += delta;
+        hasAnyChange = true;
+        if (catChanges[h.category] !== undefined) {
+          catChanges[h.category] += delta;
+          catHasChange[h.category] = true;
+        }
+      }
+    });
+
+    const changeSpan = (change, base) => {
+      const sign = change >= 0 ? '+' : '';
+      const pct = base > 0 ? (change / (base - change) * 100).toFixed(2) : '0.00';
+      const color = change > 0 ? '#22c55e' : change < 0 ? '#ef4444' : '#94a3b8';
+      return `<span style="color:${color}">${sign}${pct}% (${sign}${formatTWD(change)})</span>`;
+    };
+
+    const totalChangeHtml = hasAnyChange ? changeSpan(totalDayChange, total) : '';
+
+    const catCard = (label, cat) => {
+      if (!totals[cat]) return '';
+      const chgHtml = catHasChange[cat] ? `<div class="pbd-cat-change">${changeSpan(catChanges[cat], totals[cat])}</div>` : '';
+      return `<div class="pbd-cat">
+        <div class="pbd-cat-label">${label}</div>
+        <div class="pbd-cat-value">${formatTWD(totals[cat])}</div>
+        ${chgHtml}
+      </div>`;
+    };
+
+    return `<div class="pbd-row">
+      <div class="pbd-profile-name">${p.name}</div>
+      <div class="pbd-total">
+        <div class="pbd-total-value">${formatTWD(total)}</div>
+        ${totalChangeHtml ? `<div class="pbd-total-change">${totalChangeHtml}</div>` : ''}
+      </div>
+      <div class="pbd-cats">
+        ${catCard('台股', 'tw_stock')}
+        ${catCard('美股', 'us_stock')}
+        ${catCard('現金', 'cash')}
+        ${catCard('債券', 'bond')}
+        ${catCard('加密', 'crypto')}
+      </div>
+    </div>`;
+  }).join('');
 }
 
 // ─── 新增持股 ────────────────────────────────────────────────────────────────

@@ -18,7 +18,7 @@
       <div class="header-title">
         <h1>📊 資產總覽</h1>
         <div class="version-info">
-          <span class="version-tag">v2.4.1</span>
+          <span class="version-tag">v2.5.0</span>
           <span class="author-tag">by joshchiang0218</span>
         </div>
       </div>
@@ -66,6 +66,12 @@
           <div id="crypto-change" class="summary-change"></div>
         </div>
       </div>
+
+      <!-- Per-profile breakdown (collapsible) -->
+      <details class="profile-breakdown-details">
+        <summary>各人資產明細</summary>
+        <div id="profile-breakdown-content" class="profile-breakdown-content"></div>
+      </details>
 
       <!-- Chart + historical side by side -->
       <div class="main-content">
@@ -280,6 +286,6 @@
     <button class="btn btn-primary" onclick="onRequestPermission()">授權讀取</button>
   </div>
 
-  <script src="app.js?v=2.4.1"></script>
+  <script src="app.js?v=2.5.0"></script>
 </body>
 </html>
