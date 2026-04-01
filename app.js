@@ -1,4 +1,4 @@
-const VERSION = '2.4.0';
+const VERSION = '2.4.1';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -697,7 +697,7 @@ function addHolding(e, profileId, formSuffix) {
 
   p.holdings.push(holding);
   saveData();
-  renderProfilePanel(pid);
+  renderProfilePanel(profileId);
   renderOverview();
 
   // 清空表單
@@ -711,7 +711,7 @@ function addHolding(e, profileId, formSuffix) {
   if (!manualPrice && category !== 'cash') {
     fetchPriceForHolding(holding).then(() => {
       saveData();
-      renderProfilePanel(pid);
+      renderProfilePanel(profileId);
       renderOverview();
     });
   }
