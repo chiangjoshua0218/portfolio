@@ -1,4 +1,4 @@
-const VERSION = '2.3.0';
+const VERSION = '2.3.1';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -470,7 +470,7 @@ function buildProfilePanelHTML(p) {
     <div class="card-header">
       <h2>持股清單</h2>
       <div class="sort-controls">
-        <button id="sort-value-btn-${pid}" class="btn-sort" onclick="setSort('${pid}','value')">金額</button>
+        <button id="sort-value-btn-${pid}" class="btn-sort" onclick="setSort('${pid}')">金額 ↕</button>
       </div>
       <button id="edit-mode-btn-${pid}" class="btn btn-secondary" style="padding:0.25rem 0.75rem;font-size:0.8rem" onclick="toggleHoldingsEdit('${pid}')">編輯</button>
       <button id="save-mode-btn-${pid}" class="btn btn-primary" style="padding:0.25rem 0.75rem;font-size:0.8rem;display:none" onclick="saveHoldingsEdit('${pid}')">儲存</button>
@@ -894,17 +894,25 @@ function onCategoryChange(pid) {
 }
 
 // ─── 排序 ────────────────────────────────────────────────────────────────────
-function setSort(pid, by) {
-  holdingsSortBy[pid] = (holdingsSortBy[pid] === by) ? 'none' : by;
-  document.getElementById(`sort-value-btn-${pid}`)?.classList.toggle('active', holdingsSortBy[pid] === 'value');
+const SORT_CYCLE = { 'none': 'desc', 'desc': 'asc', 'asc': 'none' };
+const SORT_ICON  = { 'none': '↕', 'desc': '↓', 'asc': '↑' };
+
+function setSort(pid) {
+  const cur = holdingsSortBy[pid] || 'none';
+  holdingsSortBy[pid] = SORT_CYCLE[cur];
+  const btn = document.getElementById(`sort-value-btn-${pid}`);
+  if (btn) {
+    btn.textContent = `金額 ${SORT_ICON[holdingsSortBy[pid]]}`;
+    btn.classList.toggle('active', holdingsSortBy[pid] !== 'none');
+  }
   renderHoldings(pid);
 }
 
 function getSortedHoldings(holdings, pid) {
   const list = [...holdings];
-  if ((holdingsSortBy[pid] || 'none') === 'value') {
-    list.sort((a, b) => getHoldingValueTWD(b) - getHoldingValueTWD(a));
-  }
+  const s = holdingsSortBy[pid] || 'none';
+  if (s === 'desc') list.sort((a, b) => getHoldingValueTWD(b) - getHoldingValueTWD(a));
+  if (s === 'asc')  list.sort((a, b) => getHoldingValueTWD(a) - getHoldingValueTWD(b));
   return list;
 }
 
