@@ -1,4 +1,4 @@
-const VERSION = '2.2.2';
+const VERSION = '2.2.3';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -424,24 +424,11 @@ function buildProfilePanelHTML(p) {
     <div class="card">
       <div class="card-header">
         <h2>歷史資產紀錄</h2>
+        <button class="btn btn-primary" style="padding:0.25rem 0.75rem;font-size:0.8rem" onclick="openHistModal('${pid}')">＋ 新增紀錄</button>
         <button class="btn-collapse" onclick="toggleCard('body-phist-${pid}')">−</button>
       </div>
       <div class="card-body" id="body-phist-${pid}">
-        <div class="history-actions">
-          <button class="btn btn-primary" onclick="saveProfileAssets('${pid}')">📌 記錄今日資產</button>
-        </div>
-        <div class="form-row" style="margin-top:12px">
-          <div class="form-group">
-            <label>日期</label>
-            <input type="date" id="phist-date-${pid}" />
-          </div>
-          <div class="form-group">
-            <label>資產總值 (TWD)</label>
-            <input type="number" id="phist-value-${pid}" placeholder="1000000" min="0" step="any" />
-          </div>
-        </div>
-        <button class="btn btn-secondary" onclick="addProfileHistoricalRecord('${pid}')">手動新增</button>
-        <h3 style="margin-top:1.5rem">資產趨勢圖</h3>
+        <h3 style="margin-top:0">資產趨勢圖</h3>
         <div class="historical-chart-wrapper">
           <canvas id="profileHistChart-${pid}"></canvas>
         </div>
@@ -715,6 +702,63 @@ function openEdit(holdingId, profileId) {
 
 function closeModal() {
   document.getElementById('edit-modal').style.display = 'none';
+}
+
+function openHistModal(pid) {
+  document.getElementById('hist-modal-pid').value = pid;
+  document.getElementById('hist-modal-date').value = '';
+  document.getElementById('hist-modal-value').value = '';
+  document.getElementById('hist-modal').style.display = 'flex';
+}
+
+function closeHistModal() {
+  document.getElementById('hist-modal').style.display = 'none';
+}
+
+function histModalSaveToday() {
+  const pid = document.getElementById('hist-modal-pid').value;
+  if (pid === 'overview') {
+    saveCurrentAssets();
+  } else {
+    saveProfileAssets(pid);
+  }
+  closeHistModal();
+}
+
+function histModalAddManual() {
+  const pid     = document.getElementById('hist-modal-pid').value;
+  const dateVal = document.getElementById('hist-modal-date').value;
+  const value   = parseFloat(document.getElementById('hist-modal-value').value);
+  if (!dateVal || isNaN(value) || value < 0) { alert('請輸入有效的日期和資產總值'); return; }
+
+  if (pid === 'overview') {
+    const existing = historicalRecords.findIndex(r => r.date === dateVal);
+    if (existing >= 0) {
+      if (!confirm(`${dateVal} 已有紀錄，是否覆蓋？`)) return;
+      historicalRecords[existing].value = value;
+    } else {
+      historicalRecords.push({ date: dateVal, value });
+    }
+    historicalRecords.sort((a, b) => a.date.localeCompare(b.date));
+    saveData();
+    renderHistoricalRecordsList();
+    renderHistoricalChart();
+  } else {
+    const p = getProfile(pid);
+    if (!p) return;
+    const existing = p.historicalRecords.findIndex(r => r.date === dateVal);
+    if (existing >= 0) {
+      if (!confirm(`${dateVal} 已有紀錄，是否覆蓋？`)) return;
+      p.historicalRecords[existing].value = value;
+    } else {
+      p.historicalRecords.push({ date: dateVal, value });
+    }
+    p.historicalRecords.sort((a, b) => a.date.localeCompare(b.date));
+    saveData();
+    renderProfileHistoricalRecordsList(pid);
+    renderProfileHistoricalChart(pid);
+  }
+  closeHistModal();
 }
 
 function openAddModal(pid) {
