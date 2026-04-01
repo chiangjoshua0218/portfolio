@@ -1,4 +1,4 @@
-const VERSION = '2.0.0';
+const VERSION = '2.1.2';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -956,9 +956,13 @@ function parsePrice(val) {
   return (isFinite(n) && n > 0) ? n : null;
 }
 
-// 台股：本機直連（MIS 即時 → TWSE afterTrading → TPEX）
+// 台股：Yahoo Finance → MIS 即時 → TWSE afterTrading → TPEX
 async function fetchTWStockPrice(holding) {
   const symbol = holding.symbol.replace(/\.TW$/i, '').toUpperCase();
+
+  // 策略0: Yahoo Finance（支援即時價，GitHub Pages 透過 corsproxy）
+  await fetchViaYahoo(symbol + '.TW', holding, 'TWD');
+  if (holding.currentPrice) return;
 
   if (!IS_GITHUB_PAGES) {
     for (const market of ['tse', 'otc']) {
