@@ -1,4 +1,4 @@
-const VERSION = '2.2.0';
+const VERSION = '2.2.1';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -477,56 +477,6 @@ function buildProfilePanelHTML(p) {
     </div>
   </div>
 
-  <!-- 新增資產 -->
-  <div class="card">
-    <div class="card-header">
-      <h2>新增資產</h2>
-      <button class="btn-collapse" onclick="toggleCard('body-add-${pid}')">−</button>
-    </div>
-    <div class="card-body" id="body-add-${pid}">
-      <form id="add-holding-form-${pid}" onsubmit="addHolding(event, '${pid}')">
-        <div class="form-row">
-          <div class="form-group">
-            <label>類別</label>
-            <select id="holding-category-${pid}" onchange="onCategoryChange('${pid}')">
-              <option value="tw_stock">台股</option>
-              <option value="us_stock">美股</option>
-              <option value="cash">現金</option>
-              <option value="bond">債券</option>
-              <option value="crypto">加密貨幣</option>
-            </select>
-          </div>
-          <div class="form-group" id="symbol-group-${pid}">
-            <label>代號 <span id="symbol-hint-${pid}" class="hint">（如：2330、AAPL、BTC）</span></label>
-            <input type="text" id="holding-symbol-${pid}" placeholder="股票/幣種代號" />
-          </div>
-          <div class="form-group">
-            <label id="qty-label-${pid}">數量（股）</label>
-            <input type="number" id="holding-qty-${pid}" placeholder="0" min="0" step="any" required />
-          </div>
-          <div class="form-group" id="manual-price-group-${pid}" style="display:none">
-            <label>單價（TWD）</label>
-            <input type="number" id="holding-manual-price-${pid}" placeholder="0" min="0" step="any" />
-          </div>
-          <div class="form-group">
-            <label>名稱（選填）</label>
-            <input type="text" id="holding-name-${pid}" placeholder="自訂名稱" />
-          </div>
-        </div>
-        <div class="form-row">
-          <div class="form-group" id="currency-group-${pid}">
-            <label>幣別</label>
-            <select id="holding-currency-${pid}">
-              <option value="TWD">TWD 新台幣</option>
-              <option value="USD">USD 美元</option>
-            </select>
-          </div>
-        </div>
-        <button type="submit" class="btn btn-primary">新增</button>
-      </form>
-    </div>
-  </div>
-
   <!-- 持股清單 -->
   <div class="card">
     <div class="card-header">
@@ -535,6 +485,7 @@ function buildProfilePanelHTML(p) {
         <button id="sort-category-btn-${pid}" class="btn-sort" onclick="setSort('${pid}','category')">分類</button>
         <button id="sort-value-btn-${pid}" class="btn-sort" onclick="setSort('${pid}','value')">金額</button>
       </div>
+      <button class="btn btn-primary" style="padding:0.25rem 0.75rem;font-size:0.8rem" onclick="openAddModal('${pid}')">＋ 新增</button>
       <button class="btn-collapse" onclick="toggleCard('body-holdings-${pid}')">−</button>
     </div>
     <div class="card-body" id="body-holdings-${pid}">
@@ -680,19 +631,19 @@ function renderOverview() {
 }
 
 // ─── 新增持股 ────────────────────────────────────────────────────────────────
-function addHolding(e, profileId) {
+function addHolding(e, profileId, formSuffix) {
   e.preventDefault();
   const p = getProfile(profileId);
   if (!p) return;
 
-  const pid         = profileId;
-  const category    = document.getElementById(`holding-category-${pid}`).value;
-  const symbol      = document.getElementById(`holding-symbol-${pid}`).value.trim().toUpperCase();
-  const qty         = parseFloat(document.getElementById(`holding-qty-${pid}`).value);
-  const name        = document.getElementById(`holding-name-${pid}`).value.trim();
-  const currencyEl  = document.getElementById(`holding-currency-${pid}`);
+  const fs          = formSuffix || profileId;
+  const category    = document.getElementById(`holding-category-${fs}`).value;
+  const symbol      = document.getElementById(`holding-symbol-${fs}`).value.trim().toUpperCase();
+  const qty         = parseFloat(document.getElementById(`holding-qty-${fs}`).value);
+  const name        = document.getElementById(`holding-name-${fs}`).value.trim();
+  const currencyEl  = document.getElementById(`holding-currency-${fs}`);
   const currency    = currencyEl ? currencyEl.value : 'TWD';
-  const manualPriceEl = document.getElementById(`holding-manual-price-${pid}`);
+  const manualPriceEl = document.getElementById(`holding-manual-price-${fs}`);
   const manualPrice = manualPriceEl ? (parseFloat(manualPriceEl.value) || null) : null;
 
   if (isNaN(qty) || qty < 0) return alert('請輸入有效數量');
@@ -716,9 +667,10 @@ function addHolding(e, profileId) {
 
   // 清空表單
   e.target.reset();
-  const currEl = document.getElementById(`holding-currency-${pid}`);
+  const currEl = document.getElementById(`holding-currency-${fs}`);
   if (currEl) currEl.value = 'TWD';
-  onCategoryChange(pid);
+  onCategoryChange(fs);
+  if (formSuffix) closeAddModal();
 
   // 若需要自動抓價，立即抓取這一筆
   if (!manualPrice && category !== 'cash') {
@@ -763,6 +715,18 @@ function openEdit(holdingId, profileId) {
 
 function closeModal() {
   document.getElementById('edit-modal').style.display = 'none';
+}
+
+function openAddModal(pid) {
+  document.getElementById('add-modal-pid').value = pid;
+  document.getElementById('add-holding-form-add').reset();
+  document.getElementById('holding-currency-add').value = 'TWD';
+  onCategoryChange('add');
+  document.getElementById('add-holding-modal').style.display = 'flex';
+}
+
+function closeAddModal() {
+  document.getElementById('add-holding-modal').style.display = 'none';
 }
 
 function saveEdit() {
@@ -883,9 +847,10 @@ function renderHoldings(pid) {
         const color     = priceDiff > 0 ? '#22c55e' : priceDiff < 0 ? '#ef4444' : '#94a3b8';
         changeHtml = `<div class="hblock-change" style="color:${color}">${sign}${pct}%</div>`;
       }
+      const noPrice = cat !== 'cash' && !h.currentPrice;
       return `<div class="hblock-item">
-        <div class="hblock-name">${escHtml(h.name)}${h.symbol ? `<div class="holding-symbol">${escHtml(h.symbol)}</div>` : ''}</div>
-        <div class="hblock-value">${formatTWD(valueTWD)}</div>
+        <div class="hblock-name">${escHtml(h.name)}${h.symbol && h.symbol !== h.name ? `<div class="holding-symbol">${escHtml(h.symbol)}</div>` : ''}</div>
+        <div class="hblock-value">${noPrice ? '<span style="color:#475569;font-size:0.72rem">尚無價格</span>' : formatTWD(valueTWD)}</div>
         ${changeHtml}
         <div class="hblock-actions">
           <button class="btn btn-edit" onclick="openEdit('${h.id}','${pid}')">編輯</button>

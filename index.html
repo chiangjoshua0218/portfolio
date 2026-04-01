@@ -18,7 +18,7 @@
       <div class="header-title">
         <h1>📊 資產總覽</h1>
         <div class="version-info">
-          <span class="version-tag">v2.2.0</span>
+          <span class="version-tag">v2.2.1</span>
           <span class="author-tag">by joshchiang0218</span>
         </div>
       </div>
@@ -125,6 +125,53 @@
     </div>
   </div>
 
+  <!-- Add Holding Modal -->
+  <div id="add-holding-modal" class="modal" style="display:none">
+    <div class="modal-content">
+      <h3>新增資產</h3>
+      <input type="hidden" id="add-modal-pid" />
+      <form id="add-holding-form-add" onsubmit="addHolding(event, document.getElementById('add-modal-pid').value, 'add')">
+        <div class="form-group">
+          <label>類別</label>
+          <select id="holding-category-add" onchange="onCategoryChange('add')">
+            <option value="tw_stock">台股</option>
+            <option value="us_stock">美股</option>
+            <option value="cash">現金</option>
+            <option value="bond">債券</option>
+            <option value="crypto">加密貨幣</option>
+          </select>
+        </div>
+        <div class="form-group" id="symbol-group-add">
+          <label>代號 <span id="symbol-hint-add" class="hint">（如：2330、AAPL、BTC）</span></label>
+          <input type="text" id="holding-symbol-add" placeholder="股票/幣種代號" />
+        </div>
+        <div class="form-group">
+          <label id="qty-label-add">數量（股）</label>
+          <input type="number" id="holding-qty-add" placeholder="0" min="0" step="any" required />
+        </div>
+        <div class="form-group" id="manual-price-group-add" style="display:none">
+          <label>單價（TWD）</label>
+          <input type="number" id="holding-manual-price-add" placeholder="0" min="0" step="any" />
+        </div>
+        <div class="form-group">
+          <label>名稱（選填）</label>
+          <input type="text" id="holding-name-add" placeholder="自訂名稱" />
+        </div>
+        <div class="form-group" id="currency-group-add">
+          <label>幣別</label>
+          <select id="holding-currency-add">
+            <option value="TWD">TWD 新台幣</option>
+            <option value="USD">USD 美元</option>
+          </select>
+        </div>
+        <div class="modal-actions">
+          <button type="submit" class="btn btn-primary">新增</button>
+          <button type="button" class="btn btn-secondary" onclick="closeAddModal()">取消</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- Edit Modal -->
   <div id="edit-modal" class="modal" style="display:none">
     <div class="modal-content">
@@ -178,6 +225,6 @@
     <button class="btn btn-primary" onclick="onRequestPermission()">授權讀取</button>
   </div>
 
-  <script src="app.js?v=2.2.0"></script>
+  <script src="app.js?v=2.2.1"></script>
 </body>
 </html>
