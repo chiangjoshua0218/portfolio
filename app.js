@@ -1,4 +1,4 @@
-const VERSION = '2.3.1';
+const VERSION = '2.3.2';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -159,6 +159,7 @@ function renderAll() {
   renderOverview();
   renderProfilePanels();
   document.getElementById('usd-rate').value = usdRate;
+  refreshAllPrices();
 }
 
 // ─── 使用者操作：首次設定檔 ───────────────────────────────────────────────────
@@ -985,8 +986,6 @@ function renderHoldings(pid) {
 
 // ─── 價格抓取 ────────────────────────────────────────────────────────────────
 async function refreshAllPrices() {
-  const btn = document.getElementById('refresh-btn');
-  btn.disabled = true; btn.classList.add('loading');
 
   const allHoldings    = profiles.flatMap(p => p.holdings);
   const twHoldings     = allHoldings.filter(h => !h.manualPrice && (h.category === 'tw_stock' || (h.category === 'bond' && h.currency === 'TWD')));
@@ -1001,7 +1000,6 @@ async function refreshAllPrices() {
   renderAll();
 
   document.getElementById('last-updated').textContent = `最後更新：${new Date().toLocaleString('zh-TW')}`;
-  btn.disabled = false; btn.classList.remove('loading');
 }
 
 // 新增單筆時立即抓價
