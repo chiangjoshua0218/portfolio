@@ -1,4 +1,4 @@
-const VERSION = '2.1.2';
+const VERSION = '2.1.3';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -960,8 +960,9 @@ function parsePrice(val) {
 async function fetchTWStockPrice(holding) {
   const symbol = holding.symbol.replace(/\.TW$/i, '').toUpperCase();
 
-  // 策略0: Yahoo Finance（支援即時價，GitHub Pages 透過 corsproxy）
+  // 策略0: Yahoo Finance（上市試 .TW，上櫃試 .TWO）
   await fetchViaYahoo(symbol + '.TW', holding, 'TWD');
+  if (!holding.currentPrice) await fetchViaYahoo(symbol + '.TWO', holding, 'TWD');
   if (holding.currentPrice) return;
 
   if (!IS_GITHUB_PAGES) {
@@ -1041,7 +1042,7 @@ async function fetchUSStocksBatch(usHoldings) {
 
 // Yahoo Finance chart API
 async function fetchViaYahoo(symbol, holding, currency) {
-  if (/^\d/.test(symbol) && !symbol.endsWith('.TW')) symbol = symbol + '.TW';
+  if (/^\d/.test(symbol) && !symbol.endsWith('.TW') && !symbol.endsWith('.TWO')) symbol = symbol + '.TW';
   const encoded   = encodeURIComponent(symbol);
   const yahooUrl  = `https://query1.finance.yahoo.com/v8/finance/chart/${encoded}?interval=1d&range=1d`;
   const urls = IS_GITHUB_PAGES
