@@ -1,4 +1,4 @@
-const VERSION = '2.2.3';
+const VERSION = '2.2.4';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -1450,13 +1450,7 @@ function renderProfileHistoricalChart(pid) {
         },
         y: {
           beginAtZero: false,
-          ticks: { stepSize: 1_000_000, color: '#94a3b8', callback: v => {
-            if (Math.abs(v) >= 100_000_000) return (v / 100_000_000).toFixed(0) + '億';
-            if (Math.abs(v) >= 10_000_000)  return (v / 10_000_000).toFixed(0) + '千萬';
-            if (Math.abs(v) >= 1_000_000)   return (v / 1_000_000).toFixed(0) + 'M';
-            if (Math.abs(v) >= 10_000)       return (v / 10_000).toFixed(0) + '萬';
-            return v;
-          }},
+          ticks: { stepSize: 10_000_000, color: '#94a3b8', callback: v => (v / 1_000_000).toFixed(1) + 'M' },
           grid: { color: '#2d3748' }
         }
       }
@@ -1657,13 +1651,7 @@ function renderHistoricalChart() {
           ticks: {
             stepSize: 10_000_000,
             color: '#94a3b8',
-            callback: v => {
-              if (Math.abs(v) >= 100_000_000) return (v / 100_000_000).toFixed(0) + '億';
-              if (Math.abs(v) >= 10_000_000)  return (v / 10_000_000).toFixed(0) + '千萬';
-              if (Math.abs(v) >= 1_000_000)   return (v / 1_000_000).toFixed(0) + 'M';
-              if (Math.abs(v) >= 10_000)       return (v / 10_000).toFixed(0) + '萬';
-              return v;
-            }
+            callback: v => (v / 1_000_000).toFixed(1) + 'M'
           },
           grid: { color: '#2d3748' }
         }
