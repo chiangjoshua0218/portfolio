@@ -18,7 +18,7 @@
       <div class="header-title">
         <h1>📊 資產總覽</h1>
         <div class="version-info">
-          <span class="version-tag">v2.3.5</span>
+          <span class="version-tag">v2.4.0</span>
           <span class="author-tag">by joshchiang0218</span>
         </div>
       </div>
@@ -136,6 +136,50 @@
     </div>
   </div>
 
+  <!-- DCA Modal -->
+  <div id="dca-modal" class="modal" style="display:none">
+    <div class="modal-content">
+      <h3>新增定期定額計畫</h3>
+      <input type="hidden" id="dca-modal-pid" />
+      <div class="form-group">
+        <label>計畫名稱（選填）</label>
+        <input type="text" id="dca-name" placeholder="例：每月買 VTI" />
+      </div>
+      <div class="form-group">
+        <label>每月幾號執行（1–28）</label>
+        <input type="number" id="dca-day" value="5" min="1" max="28" />
+      </div>
+      <div class="form-group">
+        <label>扣款金額</label>
+        <input type="number" id="dca-amount" placeholder="2000" min="0" step="any" />
+      </div>
+      <div class="form-group">
+        <label>扣款幣別（對應現金持股）</label>
+        <select id="dca-currency">
+          <option value="USD">USD 美元</option>
+          <option value="TWD">TWD 新台幣</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>目標股票代號</label>
+        <input type="text" id="dca-symbol" placeholder="例：VTI、0050" />
+      </div>
+      <div class="form-group">
+        <label>目標分類</label>
+        <select id="dca-category">
+          <option value="us_stock">美股</option>
+          <option value="tw_stock">台股</option>
+          <option value="bond">債券</option>
+          <option value="crypto">加密貨幣</option>
+        </select>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-primary" onclick="saveNewDcaPlan()">新增</button>
+        <button class="btn btn-secondary" onclick="closeDcaModal()">取消</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Add Holding Modal -->
   <div id="add-holding-modal" class="modal" style="display:none">
     <div class="modal-content">
@@ -236,6 +280,6 @@
     <button class="btn btn-primary" onclick="onRequestPermission()">授權讀取</button>
   </div>
 
-  <script src="app.js?v=2.3.5"></script>
+  <script src="app.js?v=2.4.0"></script>
 </body>
 </html>

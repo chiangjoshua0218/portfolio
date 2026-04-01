@@ -670,6 +670,22 @@ header h1 {
 }
 .records-details summary:hover { color: #e2e8f0; }
 
+/* 定期定額 */
+.dca-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid #1e2330;
+}
+.dca-item:last-child { border-bottom: none; }
+.dca-info { flex: 1; min-width: 0; }
+.dca-name { font-size: 0.88rem; font-weight: 600; color: #e2e8f0; }
+.dca-detail { font-size: 0.75rem; color: #94a3b8; margin-top: 2px; }
+.dca-last { font-size: 0.72rem; color: #475569; margin-top: 2px; }
+.dca-actions { display: flex; gap: 6px; flex-shrink: 0; }
+
 /* Settings Card */
 .settings-card {
   margin-bottom: 20px;

@@ -1,4 +1,4 @@
-const VERSION = '2.3.5';
+const VERSION = '2.4.0';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -153,6 +153,7 @@ function applyConfig(config) {
     holdingsSortBy[p.id] = holdingsSortBy[p.id] || 'none';
     if (!p.targetAllocations)   p.targetAllocations = { tw_stock: 0, us_stock: 0, cash: 0, bond: 0, crypto: 0 };
     if (!p.historicalRecords)   p.historicalRecords = [];
+    if (!p.scheduledPlans)      p.scheduledPlans = [];
   });
 }
 
@@ -365,6 +366,7 @@ function addProfile() {
     name: name.trim(),
     holdings: [],
     targetAllocations: { tw_stock: 0, us_stock: 0, cash: 0, bond: 0, crypto: 0 },
+    scheduledPlans: [],
   });
   holdingsSortBy[id] = 'none';
   saveData();
@@ -466,6 +468,18 @@ function buildProfilePanelHTML(p) {
         <div class="target-total-bar" id="target-total-bar-${pid}">合計：<span id="target-sum-${pid}">0</span>%</div>
       </div>
       <div id="allocation-comparison-${pid}" class="allocation-comparison"></div>
+    </div>
+  </div>
+
+  <!-- 定期定額 -->
+  <div class="card">
+    <div class="card-header">
+      <h2>定期定額</h2>
+      <button class="btn btn-primary" style="padding:0.25rem 0.75rem;font-size:0.8rem" onclick="openDcaModal('${pid}')">＋ 新增計畫</button>
+      <button class="btn-collapse" onclick="toggleCard('body-dca-${pid}')">−</button>
+    </div>
+    <div class="card-body" id="body-dca-${pid}">
+      <div id="dca-list-${pid}"></div>
     </div>
   </div>
 
@@ -592,6 +606,7 @@ function renderProfilePanel(pid) {
   renderProfileChart(pid);
   renderProfileHistoricalChart(pid);
   renderProfileHistoricalRecordsList(pid);
+  renderDcaList(pid);
 }
 
 // ─── Overview 渲染 ────────────────────────────────────────────────────────────
@@ -700,6 +715,102 @@ function addHolding(e, profileId, formSuffix) {
       renderOverview();
     });
   }
+}
+
+// ─── 定期定額 UI ──────────────────────────────────────────────────────────────
+function renderDcaList(pid) {
+  const p = getProfile(pid);
+  if (!p) return;
+  const container = document.getElementById(`dca-list-${pid}`);
+  if (!container) return;
+  const plans = p.scheduledPlans || [];
+  if (plans.length === 0) {
+    container.innerHTML = '<div class="empty-state">尚無計畫</div>';
+    return;
+  }
+  container.innerHTML = plans.map(plan => {
+    const last = plan.log?.[plan.log.length - 1];
+    const lastText = last
+      ? `上次 ${last.date}：+${Number(last.shares).toFixed(4)} 股 @ ${last.currency === 'USD' ? '$' : 'NT$'}${Number(last.price).toFixed(2)}`
+      : '尚未執行';
+    return `<div class="dca-item">
+      <div class="dca-info">
+        <div class="dca-name">${escHtml(plan.name || plan.targetSymbol)}</div>
+        <div class="dca-detail">每月 ${plan.dayOfMonth} 日｜${plan.currency} ${Number(plan.amount).toLocaleString()} → ${escHtml(plan.targetSymbol)}</div>
+        <div class="dca-last">${lastText}</div>
+      </div>
+      <div class="dca-actions">
+        <button class="btn ${plan.enabled ? 'btn-primary' : 'btn-secondary'}" onclick="toggleDcaPlan('${pid}','${plan.id}')">${plan.enabled ? '啟用中' : '已停用'}</button>
+        <button class="btn btn-danger" onclick="deleteDcaPlan('${pid}','${plan.id}')">刪除</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function openDcaModal(pid) {
+  document.getElementById('dca-modal-pid').value = pid;
+  document.getElementById('dca-name').value    = '';
+  document.getElementById('dca-day').value     = '5';
+  document.getElementById('dca-amount').value  = '';
+  document.getElementById('dca-symbol').value  = '';
+  document.getElementById('dca-modal').style.display = 'flex';
+}
+
+function closeDcaModal() {
+  document.getElementById('dca-modal').style.display = 'none';
+}
+
+function saveNewDcaPlan() {
+  const pid      = document.getElementById('dca-modal-pid').value;
+  const p        = getProfile(pid);
+  if (!p) return;
+  const name     = document.getElementById('dca-name').value.trim();
+  const day      = parseInt(document.getElementById('dca-day').value);
+  const amount   = parseFloat(document.getElementById('dca-amount').value);
+  const currency = document.getElementById('dca-currency').value;
+  const symbol   = document.getElementById('dca-symbol').value.trim().toUpperCase();
+  const category = document.getElementById('dca-category').value;
+
+  if (!symbol)             return alert('請輸入目標股票代號');
+  if (isNaN(amount) || amount <= 0) return alert('請輸入有效扣款金額');
+  if (isNaN(day) || day < 1 || day > 28) return alert('請輸入 1~28 的日期');
+
+  if (!p.scheduledPlans) p.scheduledPlans = [];
+  p.scheduledPlans.push({
+    id:           Date.now().toString(),
+    name:         name || `每月買 ${symbol}`,
+    enabled:      true,
+    dayOfMonth:   day,
+    amount,
+    currency,
+    targetSymbol:   symbol,
+    targetCategory: category,
+    lastExecuted:   null,
+    log:            [],
+  });
+  saveData();
+  closeDcaModal();
+  renderDcaList(pid);
+}
+
+function toggleDcaPlan(pid, planId) {
+  const p = getProfile(pid);
+  if (!p) return;
+  const plan = p.scheduledPlans?.find(x => x.id === planId);
+  if (!plan) return;
+  plan.enabled = !plan.enabled;
+  saveData();
+  renderDcaList(pid);
+}
+
+function deleteDcaPlan(pid, planId) {
+  const p = getProfile(pid);
+  if (!p) return;
+  const plan = p.scheduledPlans?.find(x => x.id === planId);
+  if (!confirm(`確定要刪除「${plan?.name || planId}」計畫？`)) return;
+  p.scheduledPlans = p.scheduledPlans.filter(x => x.id !== planId);
+  saveData();
+  renderDcaList(pid);
 }
 
 // ─── 持股編輯模式 ────────────────────────────────────────────────────────────
@@ -1032,6 +1143,99 @@ async function refreshAllPrices() {
 
   document.getElementById('last-updated').textContent = `最後更新：${new Date().toLocaleString('zh-TW')}`;
   isRefreshing = false;
+  checkAndExecuteScheduledPlans();
+}
+
+// ─── 定期定額執行 ─────────────────────────────────────────────────────────────
+async function checkAndExecuteScheduledPlans() {
+  const today    = new Date();
+  const yy       = today.getFullYear();
+  const mm       = String(today.getMonth() + 1).padStart(2, '0');
+  const currentYM  = `${yy}-${mm}`;
+  const todayDay   = today.getDate();
+  const todayStr   = today.toISOString().split('T')[0];
+
+  // 6 個月前的日期（用於清除舊 log）
+  const cutoffDate = new Date(today);
+  cutoffDate.setMonth(cutoffDate.getMonth() - 6);
+  const cutoff = cutoffDate.toISOString().split('T')[0];
+
+  const results = [];
+
+  for (const profile of profiles) {
+    for (const plan of (profile.scheduledPlans || [])) {
+      if (!plan.enabled) continue;
+      if (plan.lastExecuted === currentYM) continue;
+      if (todayDay < plan.dayOfMonth) continue;
+
+      // 找現金
+      const cashH = profile.holdings.find(h => h.category === 'cash' && h.currency === plan.currency);
+      if (!cashH || cashH.qty < plan.amount) {
+        results.push({ name: plan.name || plan.targetSymbol, ok: false, reason: `${profile.name} 現金不足（需 ${plan.currency} ${plan.amount.toLocaleString()}）` });
+        continue;
+      }
+
+      // 取得目標股票價格
+      let targetH = profile.holdings.find(h => h.symbol === plan.targetSymbol && h.category === plan.targetCategory);
+      let price = targetH?.currentPrice;
+      let holdingCurrency = targetH?.currency;
+
+      if (!price) {
+        const temp = { symbol: plan.targetSymbol, category: plan.targetCategory, currency: plan.targetCurrency || (plan.currency === 'TWD' ? 'TWD' : 'USD'), qty: 0 };
+        await fetchPriceForHolding(temp);
+        price = temp.currentPrice;
+        holdingCurrency = temp.currency;
+      }
+
+      if (!price) {
+        results.push({ name: plan.name || plan.targetSymbol, ok: false, reason: `無法取得 ${plan.targetSymbol} 股價` });
+        continue;
+      }
+
+      // 換算：扣款金額轉成持股幣別的單價
+      const amountInHoldingCurrency = plan.currency === holdingCurrency
+        ? plan.amount
+        : plan.currency === 'USD' ? plan.amount * usdRate : plan.amount / usdRate;
+      const shares = amountInHoldingCurrency / price;
+
+      // 執行扣款
+      cashH.qty -= plan.amount;
+
+      // 加股數
+      if (targetH) {
+        targetH.qty += shares;
+      } else {
+        profile.holdings.push({
+          id: Date.now().toString() + Math.random().toString(36).slice(2),
+          category: plan.targetCategory,
+          symbol: plan.targetSymbol,
+          name: plan.targetSymbol,
+          qty: shares,
+          currency: holdingCurrency || (plan.currency === 'TWD' ? 'TWD' : 'USD'),
+          manualPrice: null,
+          currentPrice: price,
+        });
+      }
+
+      // 更新計畫狀態
+      plan.lastExecuted = currentYM;
+      if (!plan.log) plan.log = [];
+      plan.log.push({ date: todayStr, amount: plan.amount, currency: plan.currency, price, shares });
+      plan.log = plan.log.filter(l => l.date >= cutoff);
+
+      results.push({ name: plan.name || plan.targetSymbol, profile: profile.name, ok: true, shares: shares.toFixed(4), price, currency: plan.currency, amount: plan.amount });
+    }
+  }
+
+  if (results.length > 0) {
+    saveData();
+    renderAll();
+    const msg = results.map(r => r.ok
+      ? `✅ ${r.profile}｜${r.name}：買入 ${r.shares} 股 @ ${r.currency === 'USD' ? '$' : 'NT$'}${r.price.toFixed(2)}，扣款 ${r.currency} ${r.amount.toLocaleString()}`
+      : `❌ ${r.name}：${r.reason}`
+    ).join('\n');
+    alert('📅 定期定額執行結果\n\n' + msg);
+  }
 }
 
 // 新增單筆時立即抓價
