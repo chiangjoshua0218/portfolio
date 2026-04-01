@@ -1,4 +1,4 @@
-const VERSION = '2.2.1';
+const VERSION = '2.2.2';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -848,9 +848,17 @@ function renderHoldings(pid) {
         changeHtml = `<div class="hblock-change" style="color:${color}">${sign}${pct}%</div>`;
       }
       const noPrice = cat !== 'cash' && !h.currentPrice;
+      let priceDetailHtml = '';
+      if (!noPrice && cat !== 'cash' && h.currentPrice) {
+        const priceStr = h.currency === 'USD'
+          ? `$${h.currentPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`
+          : `NT$${h.currentPrice.toLocaleString('zh-TW')}`;
+        priceDetailHtml = `<div style="font-size:0.7rem;color:#64748b">${priceStr} × ${h.qty.toLocaleString()}</div>`;
+      }
       return `<div class="hblock-item">
         <div class="hblock-name">${escHtml(h.name)}${h.symbol && h.symbol !== h.name ? `<div class="holding-symbol">${escHtml(h.symbol)}</div>` : ''}</div>
         <div class="hblock-value">${noPrice ? '<span style="color:#475569;font-size:0.72rem">尚無價格</span>' : formatTWD(valueTWD)}</div>
+        ${priceDetailHtml}
         ${changeHtml}
         <div class="hblock-actions">
           <button class="btn btn-edit" onclick="openEdit('${h.id}','${pid}')">編輯</button>
