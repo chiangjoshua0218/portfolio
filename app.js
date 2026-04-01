@@ -1,4 +1,4 @@
-const VERSION = '2.2.4';
+const VERSION = '2.3.0';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -30,7 +30,8 @@ let chart                 = null;
 let historicalChart       = null;
 let profileCharts         = {}; // { [pid]: Chart instance }
 let profileHistoricalCharts = {}; // { [pid]: Chart instance }
-let holdingsSortBy        = {}; // { [profileId]: 'none'|'category'|'value' }
+let holdingsSortBy        = {}; // { [profileId]: 'none'|'value' }
+let holdingsEditMode      = {}; // { [profileId]: boolean }
 let fileHandle            = null;
 const FILE_API_SUPPORTED = 'showOpenFilePicker' in window;
 
@@ -469,9 +470,11 @@ function buildProfilePanelHTML(p) {
     <div class="card-header">
       <h2>持股清單</h2>
       <div class="sort-controls">
-        <button id="sort-category-btn-${pid}" class="btn-sort" onclick="setSort('${pid}','category')">分類</button>
         <button id="sort-value-btn-${pid}" class="btn-sort" onclick="setSort('${pid}','value')">金額</button>
       </div>
+      <button id="edit-mode-btn-${pid}" class="btn btn-secondary" style="padding:0.25rem 0.75rem;font-size:0.8rem" onclick="toggleHoldingsEdit('${pid}')">編輯</button>
+      <button id="save-mode-btn-${pid}" class="btn btn-primary" style="padding:0.25rem 0.75rem;font-size:0.8rem;display:none" onclick="saveHoldingsEdit('${pid}')">儲存</button>
+      <button id="cancel-mode-btn-${pid}" class="btn btn-secondary" style="padding:0.25rem 0.75rem;font-size:0.8rem;display:none" onclick="cancelHoldingsEdit('${pid}')">取消</button>
       <button class="btn btn-primary" style="padding:0.25rem 0.75rem;font-size:0.8rem" onclick="openAddModal('${pid}')">＋ 新增</button>
       <button class="btn-collapse" onclick="toggleCard('body-holdings-${pid}')">−</button>
     </div>
@@ -669,6 +672,55 @@ function addHolding(e, profileId, formSuffix) {
   }
 }
 
+// ─── 持股編輯模式 ────────────────────────────────────────────────────────────
+function toggleHoldingsEdit(pid) {
+  holdingsEditMode[pid] = true;
+  document.getElementById(`edit-mode-btn-${pid}`).style.display   = 'none';
+  document.getElementById(`save-mode-btn-${pid}`).style.display   = '';
+  document.getElementById(`cancel-mode-btn-${pid}`).style.display = '';
+  renderHoldings(pid);
+}
+
+function cancelHoldingsEdit(pid) {
+  holdingsEditMode[pid] = false;
+  document.getElementById(`edit-mode-btn-${pid}`).style.display   = '';
+  document.getElementById(`save-mode-btn-${pid}`).style.display   = 'none';
+  document.getElementById(`cancel-mode-btn-${pid}`).style.display = 'none';
+  renderHoldings(pid);
+}
+
+function saveHoldingsEdit(pid) {
+  const p = getProfile(pid);
+  if (!p) return;
+  document.querySelectorAll(`#holdings-list-${pid} [data-field="name"]`).forEach(input => {
+    const h = p.holdings.find(x => x.id === input.dataset.id);
+    if (!h) return;
+    const nameVal  = input.value.trim();
+    const qtyEl    = document.querySelector(`#holdings-list-${pid} [data-id="${h.id}"][data-field="qty"]`);
+    const priceEl  = document.querySelector(`#holdings-list-${pid} [data-id="${h.id}"][data-field="price"]`);
+    if (nameVal) h.name = nameVal;
+    if (qtyEl)   h.qty  = parseFloat(qtyEl.value) || h.qty;
+    if (priceEl) {
+      const mp = parseFloat(priceEl.value) || null;
+      h.manualPrice = mp;
+      if (mp) h.currentPrice = mp;
+    }
+  });
+  saveData();
+  cancelHoldingsEdit(pid);
+  renderOverview();
+}
+
+function deleteHoldingInEdit(holdingId, pid) {
+  if (!confirm('確定要刪除這筆資產？')) return;
+  const p = getProfile(pid);
+  if (!p) return;
+  p.holdings = p.holdings.filter(h => h.id !== holdingId);
+  saveData();
+  renderHoldings(pid);
+  renderOverview();
+}
+
 // ─── 刪除持股 ────────────────────────────────────────────────────────────────
 function deleteHolding(holdingId, profileId) {
   if (!confirm('確定要刪除這筆資產？')) return;
@@ -844,17 +896,13 @@ function onCategoryChange(pid) {
 // ─── 排序 ────────────────────────────────────────────────────────────────────
 function setSort(pid, by) {
   holdingsSortBy[pid] = (holdingsSortBy[pid] === by) ? 'none' : by;
-  document.getElementById(`sort-category-btn-${pid}`)?.classList.toggle('active', holdingsSortBy[pid] === 'category');
-  document.getElementById(`sort-value-btn-${pid}`)?.classList.toggle('active',    holdingsSortBy[pid] === 'value');
+  document.getElementById(`sort-value-btn-${pid}`)?.classList.toggle('active', holdingsSortBy[pid] === 'value');
   renderHoldings(pid);
 }
 
 function getSortedHoldings(holdings, pid) {
   const list = [...holdings];
-  const sortBy = holdingsSortBy[pid] || 'none';
-  if (sortBy === 'category') {
-    list.sort((a, b) => (CATEGORY_ORDER[a.category] ?? 9) - (CATEGORY_ORDER[b.category] ?? 9));
-  } else if (sortBy === 'value') {
+  if ((holdingsSortBy[pid] || 'none') === 'value') {
     list.sort((a, b) => getHoldingValueTWD(b) - getHoldingValueTWD(a));
   }
   return list;
@@ -877,11 +925,21 @@ function renderHoldings(pid) {
   TARGET_CATS.forEach(c => { groups[c] = []; });
   p.holdings.forEach(h => { if (groups[h.category]) groups[h.category].push(h); });
 
+  const editMode = !!holdingsEditMode[pid];
+
   container.innerHTML = `<div class="holdings-grid">${TARGET_CATS.map(cat => {
-    const holdings = groups[cat];
+    const holdings = getSortedHoldings(groups[cat], pid);
     const catTotal = holdings.reduce((s, h) => s + getHoldingValueTWD(h), 0);
 
     const items = holdings.map(h => {
+      if (editMode) {
+        return `<div class="hblock-item hblock-item-edit">
+          <button class="hblock-x-btn" onclick="deleteHoldingInEdit('${h.id}','${pid}')">×</button>
+          <input class="hblock-edit-input" data-id="${h.id}" data-field="name" value="${escHtml(h.name)}" placeholder="名稱">
+          <input class="hblock-edit-input" data-id="${h.id}" data-field="qty" type="number" value="${h.qty}" min="0" step="any" placeholder="數量">
+          <input class="hblock-edit-input" data-id="${h.id}" data-field="price" type="number" value="${h.manualPrice || ''}" min="0" step="any" placeholder="手動單價（選填）">
+        </div>`;
+      }
       const valueTWD = getHoldingValueTWD(h);
       let changeHtml = '';
       if (h.currentPrice && h.previousClose && cat !== 'cash') {
@@ -904,10 +962,6 @@ function renderHoldings(pid) {
         <div class="hblock-value">${noPrice ? '<span style="color:#475569;font-size:0.72rem">尚無價格</span>' : formatTWD(valueTWD)}</div>
         ${priceDetailHtml}
         ${changeHtml}
-        <div class="hblock-actions">
-          <button class="btn btn-edit" onclick="openEdit('${h.id}','${pid}')">編輯</button>
-          <button class="btn btn-danger" onclick="deleteHolding('${h.id}','${pid}')">刪除</button>
-        </div>
       </div>`;
     }).join('');
 

@@ -622,6 +622,43 @@ header h1 {
   padding: 8px 0;
 }
 
+/* 編輯模式 */
+.hblock-item-edit {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 0 8px 0;
+  border-bottom: 1px solid #1e2330;
+}
+.hblock-item-edit:last-child { border-bottom: none; }
+.hblock-x-btn {
+  position: absolute;
+  top: 6px;
+  right: 0;
+  background: #7f1d1d;
+  color: #fca5a5;
+  border: none;
+  border-radius: 4px;
+  padding: 1px 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: bold;
+  line-height: 1.4;
+}
+.hblock-x-btn:hover { background: #991b1b; }
+.hblock-edit-input {
+  width: 100%;
+  padding: 3px 6px;
+  background: #1e2330;
+  border: 1px solid #374151;
+  border-radius: 4px;
+  color: #e2e8f0;
+  font-size: 0.75rem;
+  box-sizing: border-box;
+}
+.hblock-edit-input:focus { outline: none; border-color: #38bdf8; }
+
 /* 紀錄明細可收合 */
 .records-details summary {
   cursor: pointer;
