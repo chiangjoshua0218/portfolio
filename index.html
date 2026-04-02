@@ -18,7 +18,7 @@
       <div class="header-title">
         <h1>📊 資產總覽</h1>
         <div class="version-info">
-          <span class="version-tag">v2.6.1</span>
+          <span class="version-tag">v2.7.0</span>
           <span class="author-tag">by joshchiang0218</span>
         </div>
       </div>
@@ -207,6 +207,15 @@
           <input type="text" id="holding-symbol-add" placeholder="股票/幣種代號" />
         </div>
         <div class="form-group">
+          <label>報價來源 <span class="hint">（通常不需更改）</span></label>
+          <select id="holding-fetch-as-add">
+            <option value="">自動（同類別）</option>
+            <option value="tw_stock">台股</option>
+            <option value="us_stock">美股</option>
+            <option value="crypto">加密貨幣</option>
+          </select>
+        </div>
+        <div class="form-group">
           <label id="qty-label-add">數量（股）</label>
           <input type="number" id="holding-qty-add" placeholder="0" min="0" step="any" required />
         </div>
@@ -240,12 +249,21 @@
       <input type="hidden" id="edit-id" />
       <input type="hidden" id="edit-profile-id" />
       <div class="form-group">
-        <label>類別（可手動調整配置歸類）</label>
+        <label>類別（配置歸類）</label>
         <select id="edit-category">
           <option value="tw_stock">台股</option>
           <option value="us_stock">美股</option>
           <option value="cash">現金</option>
           <option value="bond">債券</option>
+          <option value="crypto">加密貨幣</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>報價來源 <span class="hint">（通常不需更改）</span></label>
+        <select id="edit-fetch-as">
+          <option value="">自動（同類別）</option>
+          <option value="tw_stock">台股</option>
+          <option value="us_stock">美股</option>
           <option value="crypto">加密貨幣</option>
         </select>
       </div>
@@ -286,6 +304,6 @@
     <button class="btn btn-primary" onclick="onRequestPermission()">授權讀取</button>
   </div>
 
-  <script src="app.js?v=2.6.1"></script>
+  <script src="app.js?v=2.7.0"></script>
 </body>
 </html>

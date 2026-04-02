@@ -1,4 +1,4 @@
-const VERSION = '2.6.1';
+const VERSION = '2.7.0';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -724,6 +724,8 @@ function addHolding(e, profileId, formSuffix) {
   const currency    = currencyEl ? currencyEl.value : 'TWD';
   const manualPriceEl = document.getElementById(`holding-manual-price-${fs}`);
   const manualPrice = manualPriceEl ? (parseFloat(manualPriceEl.value) || null) : null;
+  const fetchAsEl   = document.getElementById(`holding-fetch-as-${fs}`);
+  const fetchAs     = fetchAsEl ? (fetchAsEl.value || null) : null;
 
   if (isNaN(qty) || qty < 0) return alert('請輸入有效數量');
   if (category !== 'cash' && !symbol) return alert('請輸入代號');
@@ -737,6 +739,7 @@ function addHolding(e, profileId, formSuffix) {
     currency,
     manualPrice,
     currentPrice: manualPrice || null,
+    ...(fetchAs ? { fetchAs } : {}),
   };
 
   p.holdings.push(holding);
@@ -927,6 +930,7 @@ function openEdit(holdingId, profileId) {
   document.getElementById('edit-id').value           = holdingId;
   document.getElementById('edit-profile-id').value   = profileId;
   document.getElementById('edit-category').value     = h.category;
+  document.getElementById('edit-fetch-as').value     = h.fetchAs || '';
   document.getElementById('edit-qty').value          = h.qty;
   document.getElementById('edit-manual-price').value = h.manualPrice || '';
   document.getElementById('edit-name').value         = h.name;
@@ -1013,10 +1017,11 @@ function closeAddModal() {
 function saveEdit() {
   const holdingId  = document.getElementById('edit-id').value;
   const profileId  = document.getElementById('edit-profile-id').value;
-  const category   = document.getElementById('edit-category').value;
-  const qty        = parseFloat(document.getElementById('edit-qty').value);
+  const category    = document.getElementById('edit-category').value;
+  const fetchAsVal  = document.getElementById('edit-fetch-as').value || null;
+  const qty         = parseFloat(document.getElementById('edit-qty').value);
   const manualPrice = parseFloat(document.getElementById('edit-manual-price').value) || null;
-  const name       = document.getElementById('edit-name').value.trim();
+  const name        = document.getElementById('edit-name').value.trim();
 
   const p = getProfile(profileId);
   if (!p) return;
@@ -1024,6 +1029,7 @@ function saveEdit() {
   if (!h) return;
 
   h.category    = category;
+  h.fetchAs     = fetchAsVal;
   h.qty         = qty;
   h.name        = name || h.symbol || CATEGORY_LABELS[h.category];
   h.manualPrice = manualPrice;
@@ -1174,9 +1180,10 @@ async function refreshAllPrices() {
   isRefreshing = true;
 
   const allHoldings    = profiles.flatMap(p => p.holdings);
-  const twHoldings     = allHoldings.filter(h => !h.manualPrice && (h.category === 'tw_stock' || (h.category === 'bond' && h.currency === 'TWD')));
-  const usHoldings     = allHoldings.filter(h => !h.manualPrice && (h.category === 'us_stock' || (h.category === 'bond' && h.currency !== 'TWD')));
-  const cryptoHoldings = allHoldings.filter(h => !h.manualPrice && h.category === 'crypto');
+  const getFetchCat    = h => h.fetchAs || (h.category === 'bond' ? (h.currency === 'TWD' ? 'tw_stock' : 'us_stock') : h.category);
+  const twHoldings     = allHoldings.filter(h => !h.manualPrice && getFetchCat(h) === 'tw_stock');
+  const usHoldings     = allHoldings.filter(h => !h.manualPrice && getFetchCat(h) === 'us_stock');
+  const cryptoHoldings = allHoldings.filter(h => !h.manualPrice && getFetchCat(h) === 'crypto');
 
   for (const h of twHoldings) await fetchTWStockPrice(h);
   await fetchUSStocksBatch(usHoldings);
@@ -1285,9 +1292,10 @@ async function checkAndExecuteScheduledPlans() {
 // 新增單筆時立即抓價
 async function fetchPriceForHolding(holding) {
   try {
-    if (holding.category === 'crypto') {
+    const fetchCat = holding.fetchAs || (holding.category === 'bond' ? (holding.currency === 'TWD' ? 'tw_stock' : 'us_stock') : holding.category);
+    if (fetchCat === 'crypto') {
       await fetchCryptoPrice(holding);
-    } else if (holding.category === 'tw_stock' || (holding.category === 'bond' && holding.currency === 'TWD')) {
+    } else if (fetchCat === 'tw_stock') {
       await fetchTWStockPrice(holding);
     } else {
       await fetchViaYahoo(holding.symbol, holding, 'USD');
