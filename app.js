@@ -1,4 +1,4 @@
-const VERSION = '2.6.0';
+const VERSION = '2.6.1';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -341,6 +341,7 @@ function renderTabs() {
 
 function switchTab(id) {
   activeProfileId = id;
+  window.scrollTo({ top: 0, behavior: 'instant' });
   renderTabs();
   const overviewPanel = document.getElementById('panel-overview');
   if (id === 'overview') {
@@ -1589,6 +1590,11 @@ function cancelTargetEdit(pid) {
 function saveTargetEdit(pid) {
   const p = getProfile(pid);
   if (!p) return;
+  const sum = TARGET_CATS.reduce((s, c) => {
+    const el = document.getElementById(`target-edit-${c}-${pid}`);
+    return s + (el ? parseFloat(el.value) || 0 : 0);
+  }, 0);
+  if (sum !== 100) { alert(`合計必須為 100%（目前 ${sum}%）`); return; }
   TARGET_CATS.forEach(c => {
     const el = document.getElementById(`target-edit-${c}-${pid}`);
     p.targetAllocations[c] = el ? parseFloat(el.value) || 0 : 0;

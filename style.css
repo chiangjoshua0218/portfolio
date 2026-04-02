@@ -53,13 +53,18 @@ header h1 {
 
 .card-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  gap: 8px;
   margin-bottom: 1rem;
 }
 
 .card-header h2 {
   margin-bottom: 0;
+  margin-right: 4px;
+}
+
+.card-header .btn-collapse {
+  margin-left: auto;
 }
 
 .btn-collapse {
