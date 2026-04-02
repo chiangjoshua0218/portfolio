@@ -1,4 +1,4 @@
-const VERSION = '2.5.0';
+const VERSION = '2.6.0';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -451,23 +451,13 @@ function buildProfilePanelHTML(p) {
   <div class="card">
     <div class="card-header">
       <h2>目標配置</h2>
+      <button id="target-edit-btn-${pid}" class="btn btn-secondary" style="padding:0.25rem 0.75rem;font-size:0.8rem" onclick="toggleTargetEdit('${pid}')">編輯</button>
+      <button id="target-save-btn-${pid}" class="btn btn-primary" style="padding:0.25rem 0.75rem;font-size:0.8rem;display:none" onclick="saveTargetEdit('${pid}')">儲存</button>
+      <button id="target-cancel-btn-${pid}" class="btn btn-secondary" style="padding:0.25rem 0.75rem;font-size:0.8rem;display:none" onclick="cancelTargetEdit('${pid}')">取消</button>
       <button class="btn-collapse" onclick="toggleCard('body-target-${pid}')">−</button>
     </div>
     <div class="card-body" id="body-target-${pid}">
-      <div class="target-allocation">
-        <div class="target-inputs">
-          ${TARGET_CATS.map(c => `
-          <div class="target-row">
-            <label>${CATEGORY_LABELS[c]}</label>
-            <div class="target-pct-input">
-              <input type="number" id="target-${c}-${pid}" min="0" max="100" step="1" placeholder="0" oninput="onTargetChange('${pid}')">
-              <span>%</span>
-            </div>
-          </div>`).join('')}
-        </div>
-        <div class="target-total-bar" id="target-total-bar-${pid}">合計：<span id="target-sum-${pid}">0</span>%</div>
-      </div>
-      <div id="allocation-comparison-${pid}" class="allocation-comparison"></div>
+      <div id="target-cards-${pid}"></div>
     </div>
   </div>
 
@@ -517,11 +507,7 @@ function renderProfilePanels() {
     div.innerHTML = buildProfilePanelHTML(p);
     container.appendChild(div);
     // 填入目標配置數值
-    TARGET_CATS.forEach(c => {
-      const el = document.getElementById(`target-${c}-${p.id}`);
-      if (el) el.value = p.targetAllocations[c] || '';
-    });
-    updateTargetTotalBar(p.id);
+    renderTargetCards(p.id);
   });
 
   // 顯示目前 active 的 panel
@@ -596,12 +582,7 @@ function renderProfilePanel(pid) {
   });
 
   // 目標配置
-  TARGET_CATS.forEach(c => {
-    const el = document.getElementById(`target-${c}-${pid}`);
-    if (el) el.value = p.targetAllocations[c] || '';
-  });
-  updateTargetTotalBar(pid);
-  renderAllocationComparison(pid);
+  renderTargetCards(pid);
   renderHoldings(pid);
   renderProfileChart(pid);
   renderProfileHistoricalChart(pid);
@@ -1540,6 +1521,93 @@ function getHoldingValueTWD(h) {
 }
 
 // ─── 目標配置 ─────────────────────────────────────────────────────────────────
+let targetEditMode = {};
+
+function renderTargetCards(pid) {
+  const container = document.getElementById(`target-cards-${pid}`);
+  if (!container) return;
+  const p = getProfile(pid);
+  if (!p) return;
+
+  const totals = Object.fromEntries(TARGET_CATS.map(c => [c, 0]));
+  p.holdings.forEach(h => { totals[h.category] = (totals[h.category] || 0) + getHoldingValueTWD(h); });
+  const grandTotal = Object.values(totals).reduce((a, b) => a + b, 0);
+  const isEdit = !!targetEditMode[pid];
+
+  const cards = TARGET_CATS.map(c => {
+    const tgtPct = p.targetAllocations[c] || 0;
+    const curPct = grandTotal > 0 ? totals[c] / grandTotal * 100 : 0;
+    const diff   = grandTotal * tgtPct / 100 - totals[c];
+
+    let adjHtml;
+    if (grandTotal === 0 || (tgtPct === 0 && totals[c] === 0)) {
+      adjHtml = `<span class="tcard-adj zero">—</span>`;
+    } else if (Math.abs(diff) < 100) {
+      adjHtml = `<span class="tcard-adj zero">±0</span>`;
+    } else if (diff > 0) {
+      adjHtml = `<span class="tcard-adj buy">+${formatTWD(diff)}</span>`;
+    } else {
+      adjHtml = `<span class="tcard-adj sell">${formatTWD(diff)}</span>`;
+    }
+
+    const targetHtml = isEdit
+      ? `<span class="tcard-edit-wrap"><input type="number" class="tcard-input" id="target-edit-${c}-${pid}" value="${tgtPct}" min="0" max="100" step="1" oninput="onTargetEditChange('${pid}')">%</span>`
+      : `<span>${tgtPct}%</span>`;
+
+    return `<div class="tcard">
+      <div class="tcard-label">${CATEGORY_LABELS[c]}</div>
+      <div class="tcard-row"><span class="tcard-key">目標</span><span class="tcard-target">${targetHtml}</span></div>
+      <div class="tcard-row"><span class="tcard-key">目前</span><span class="tcard-current">${curPct.toFixed(1)}%</span></div>
+      <div class="tcard-row"><span class="tcard-key">調整</span>${adjHtml}</div>
+    </div>`;
+  }).join('');
+
+  const tSum = TARGET_CATS.reduce((s, c) => s + (p.targetAllocations[c] || 0), 0);
+  const sumHtml = isEdit
+    ? `<div class="tcard-sum${tSum === 100 ? ' perfect' : tSum > 100 ? ' over' : ''}" id="target-sum-bar-${pid}">合計：<span id="target-sum-${pid}">${tSum}</span>%</div>`
+    : '';
+
+  container.innerHTML = `<div class="tcard-grid">${cards}</div>${sumHtml}`;
+}
+
+function toggleTargetEdit(pid) {
+  targetEditMode[pid] = true;
+  document.getElementById(`target-edit-btn-${pid}`).style.display = 'none';
+  document.getElementById(`target-save-btn-${pid}`).style.display = '';
+  document.getElementById(`target-cancel-btn-${pid}`).style.display = '';
+  renderTargetCards(pid);
+}
+
+function cancelTargetEdit(pid) {
+  targetEditMode[pid] = false;
+  document.getElementById(`target-edit-btn-${pid}`).style.display = '';
+  document.getElementById(`target-save-btn-${pid}`).style.display = 'none';
+  document.getElementById(`target-cancel-btn-${pid}`).style.display = 'none';
+  renderTargetCards(pid);
+}
+
+function saveTargetEdit(pid) {
+  const p = getProfile(pid);
+  if (!p) return;
+  TARGET_CATS.forEach(c => {
+    const el = document.getElementById(`target-edit-${c}-${pid}`);
+    p.targetAllocations[c] = el ? parseFloat(el.value) || 0 : 0;
+  });
+  saveData();
+  cancelTargetEdit(pid);
+}
+
+function onTargetEditChange(pid) {
+  const sum = TARGET_CATS.reduce((s, c) => {
+    const el = document.getElementById(`target-edit-${c}-${pid}`);
+    return s + (el ? parseFloat(el.value) || 0 : 0);
+  }, 0);
+  const sumEl  = document.getElementById(`target-sum-${pid}`);
+  const barEl  = document.getElementById(`target-sum-bar-${pid}`);
+  if (sumEl) sumEl.textContent = sum;
+  if (barEl) barEl.className = 'tcard-sum' + (sum === 100 ? ' perfect' : sum > 100 ? ' over' : '');
+}
+
 function updateTargetTotalBar(pid) {
   const p = getProfile(pid);
   if (!p) return;
