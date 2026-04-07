@@ -1,4 +1,4 @@
-const VERSION = '2.7.0';
+const VERSION = '2.8.0';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -726,6 +726,8 @@ function addHolding(e, profileId, formSuffix) {
   const manualPrice = manualPriceEl ? (parseFloat(manualPriceEl.value) || null) : null;
   const fetchAsEl   = document.getElementById(`holding-fetch-as-${fs}`);
   const fetchAs     = fetchAsEl ? (fetchAsEl.value || null) : null;
+  const costPriceEl = document.getElementById(`holding-cost-price-${fs}`);
+  const costPrice   = costPriceEl ? (parseFloat(costPriceEl.value) || null) : null;
 
   if (isNaN(qty) || qty < 0) return alert('請輸入有效數量');
   if (category !== 'cash' && !symbol) return alert('請輸入代號');
@@ -740,6 +742,7 @@ function addHolding(e, profileId, formSuffix) {
     manualPrice,
     currentPrice: manualPrice || null,
     ...(fetchAs ? { fetchAs } : {}),
+    ...(costPrice ? { costPrice } : {}),
   };
 
   p.holdings.push(holding);
@@ -886,6 +889,7 @@ function saveHoldingsEdit(pid) {
     const nameVal  = input.value.trim();
     const qtyEl    = document.querySelector(`#holdings-list-${pid} [data-id="${h.id}"][data-field="qty"]`);
     const priceEl  = document.querySelector(`#holdings-list-${pid} [data-id="${h.id}"][data-field="price"]`);
+    const costEl   = document.querySelector(`#holdings-list-${pid} [data-id="${h.id}"][data-field="cost"]`);
     if (nameVal) h.name = nameVal;
     if (qtyEl)   h.qty  = parseFloat(qtyEl.value) || h.qty;
     if (priceEl) {
@@ -893,6 +897,7 @@ function saveHoldingsEdit(pid) {
       h.manualPrice = mp;
       if (mp) h.currentPrice = mp;
     }
+    if (costEl) h.costPrice = parseFloat(costEl.value) || null;
   });
   saveData();
   cancelHoldingsEdit(pid);
@@ -933,6 +938,7 @@ function openEdit(holdingId, profileId) {
   document.getElementById('edit-fetch-as').value     = h.fetchAs || '';
   document.getElementById('edit-qty').value          = h.qty;
   document.getElementById('edit-manual-price').value = h.manualPrice || '';
+  document.getElementById('edit-cost-price').value   = h.costPrice || '';
   document.getElementById('edit-name').value         = h.name;
 
   const showManual = h.category !== 'cash';
@@ -1028,9 +1034,12 @@ function saveEdit() {
   const h = p.holdings.find(x => x.id === holdingId);
   if (!h) return;
 
+  const costPrice   = parseFloat(document.getElementById('edit-cost-price').value) || null;
+
   h.category    = category;
   h.fetchAs     = fetchAsVal;
   h.qty         = qty;
+  h.costPrice   = costPrice;
   h.name        = name || h.symbol || CATEGORY_LABELS[h.category];
   h.manualPrice = manualPrice;
   if (manualPrice) h.currentPrice = manualPrice;
@@ -1130,6 +1139,14 @@ function renderHoldings(pid) {
     const holdings = getSortedHoldings(groups[cat], pid);
     const catTotal = holdings.reduce((s, h) => s + getHoldingValueTWD(h), 0);
 
+    const catPnlTWD  = holdings.reduce((s, h) => { const p = getHoldingPnL(h); return s + (p ? p.pnlTWD : 0); }, 0);
+    const catHasPnl  = holdings.some(h => getHoldingPnL(h));
+    const catPnlHtml = catHasPnl ? (() => {
+      const sign  = catPnlTWD >= 0 ? '+' : '';
+      const color = catPnlTWD > 0 ? '#22c55e' : catPnlTWD < 0 ? '#ef4444' : '#94a3b8';
+      return `<span class="hblock-cat-pnl" style="color:${color}">${sign}${formatTWD(catPnlTWD)}</span>`;
+    })() : '';
+
     const items = holdings.map(h => {
       if (editMode) {
         return `<div class="hblock-item hblock-item-edit">
@@ -1137,6 +1154,7 @@ function renderHoldings(pid) {
           <input class="hblock-edit-input" data-id="${h.id}" data-field="name" value="${escHtml(h.name)}" placeholder="名稱">
           <input class="hblock-edit-input" data-id="${h.id}" data-field="qty" type="number" value="${h.qty}" min="0" step="any" placeholder="數量">
           <input class="hblock-edit-input" data-id="${h.id}" data-field="price" type="number" value="${h.manualPrice || ''}" min="0" step="any" placeholder="手動單價（選填）">
+          <input class="hblock-edit-input" data-id="${h.id}" data-field="cost" type="number" value="${h.costPrice || ''}" min="0" step="any" placeholder="買入均價（選填）">
         </div>`;
       }
       const valueTWD = getHoldingValueTWD(h);
@@ -1156,11 +1174,40 @@ function renderHoldings(pid) {
           : `NT$${h.currentPrice.toLocaleString('zh-TW')}`;
         priceDetailHtml = `<div style="font-size:0.7rem;color:#64748b">${priceStr} × ${h.qty.toLocaleString()}</div>`;
       }
+      // 損益
+      let pnlHtml = '';
+      const pnl = getHoldingPnL(h);
+      if (pnl) {
+        const sign  = pnl.pnlTWD >= 0 ? '+' : '';
+        const color = pnl.pnlTWD > 0 ? '#22c55e' : pnl.pnlTWD < 0 ? '#ef4444' : '#94a3b8';
+        pnlHtml = `<div class="hblock-pnl" style="color:${color}">${sign}${pnl.pnlPct.toFixed(2)}% (${sign}${formatTWD(pnl.pnlTWD)})</div>`;
+      }
+      // 月線/季線乖離
+      let maHtml = '';
+      if (h.ma20 != null || h.ma60 != null) {
+        const fmtV = v => h.currency === 'USD'
+          ? `$${v.toFixed(2)}`
+          : `NT$${Math.round(v).toLocaleString()}`;
+        const biasPart = (bias) => {
+          if (bias == null) return '';
+          const s = bias >= 0 ? '+' : '';
+          const c = Math.abs(bias) > 5
+            ? (bias > 0 ? '#f59e0b' : '#38bdf8')
+            : (bias >= 0 ? '#94a3b8' : '#94a3b8');
+          return ` <span style="color:${c}">${s}${bias.toFixed(1)}%</span>`;
+        };
+        const parts = [];
+        if (h.ma20 != null) parts.push(`月線${fmtV(h.ma20)}${biasPart(h.bias20)}`);
+        if (h.ma60 != null) parts.push(`季線${fmtV(h.ma60)}${biasPart(h.bias60)}`);
+        maHtml = `<div class="hblock-ma">${parts.join(' · ')}</div>`;
+      }
       return `<div class="hblock-item">
         <div class="hblock-name">${escHtml(h.name)}${h.symbol && h.symbol !== h.name ? `<div class="holding-symbol">${escHtml(h.symbol)}</div>` : ''}</div>
         <div class="hblock-value">${noPrice ? '<span style="color:#475569;font-size:0.72rem">尚無價格</span>' : formatTWD(valueTWD)}</div>
         ${priceDetailHtml}
         ${changeHtml}
+        ${pnlHtml}
+        ${maHtml}
       </div>`;
     }).join('');
 
@@ -1168,6 +1215,7 @@ function renderHoldings(pid) {
       <div class="hblock-header">
         <span class="holding-badge badge-${cat}">${CATEGORY_LABELS[cat]}</span>
         ${catTotal > 0 ? `<span class="hblock-total">${formatTWD(catTotal)}</span>` : ''}
+        ${catPnlHtml}
       </div>
       ${holdings.length === 0 ? '<div class="hblock-empty">—</div>' : `<div class="hblock-items">${items}</div>`}
     </div>`;
@@ -1195,6 +1243,7 @@ async function refreshAllPrices() {
   document.getElementById('last-updated').textContent = `最後更新：${new Date().toLocaleString('zh-TW')}`;
   isRefreshing = false;
   checkAndExecuteScheduledPlans();
+  refreshAllTechnicals(); // 非阻塞，背景計算技術指標
 }
 
 // ─── 定期定額執行 ─────────────────────────────────────────────────────────────
@@ -1435,6 +1484,64 @@ async function fetchViaYahoo(symbol, holding, currency) {
   }
 }
 
+// ─── 技術指標（MA20/MA60/乖離率）────────────────────────────────────────────
+function calcMA(closes, period) {
+  if (closes.length < period) return null;
+  const slice = closes.slice(-period);
+  return slice.reduce((a, b) => a + b, 0) / period;
+}
+
+async function fetchHistoryViaYahoo(symbol) {
+  const encoded  = encodeURIComponent(symbol);
+  const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encoded}?interval=1d&range=4mo`;
+  const urls = IS_GITHUB_PAGES
+    ? [`https://corsproxy.io/?url=${encodeURIComponent(yahooUrl)}`]
+    : [yahooUrl];
+  for (const url of urls) {
+    try {
+      const res = await fetch(url);
+      if (!res.ok) continue;
+      const text = await res.text();
+      let data;
+      try { const w = JSON.parse(text); data = w.contents ? JSON.parse(w.contents) : w; }
+      catch { continue; }
+      const closes = data?.chart?.result?.[0]?.indicators?.quote?.[0]?.close;
+      if (closes?.length) return closes.filter(v => v != null);
+    } catch {}
+  }
+  return null;
+}
+
+async function fetchTechnicalsForHolding(h) {
+  const fetchCat = h.fetchAs || h.category;
+  if (fetchCat === 'crypto' || h.category === 'cash') return;
+  if (!h.currentPrice) return;
+
+  let symbol = h.symbol;
+  if (fetchCat === 'tw_stock') {
+    symbol = symbol + (yahooSuffixCache[symbol] || '.TW');
+  }
+
+  const closes = await fetchHistoryViaYahoo(symbol);
+  if (!closes || closes.length < 5) return;
+
+  const ma20 = calcMA(closes, 20);
+  const ma60 = calcMA(closes, 60);
+  h.ma20   = ma20;
+  h.ma60   = ma60;
+  h.bias20 = (ma20 && h.currentPrice) ? (h.currentPrice - ma20) / ma20 * 100 : null;
+  h.bias60 = (ma60 && h.currentPrice) ? (h.currentPrice - ma60) / ma60 * 100 : null;
+}
+
+async function refreshAllTechnicals() {
+  const techHoldings = profiles.flatMap(p => p.holdings).filter(h => {
+    const cat = h.fetchAs || h.category;
+    return !h.manualPrice && h.category !== 'cash' && cat !== 'crypto';
+  });
+  for (const h of techHoldings) await fetchTechnicalsForHolding(h);
+  renderAll();
+}
+
 // 加密貨幣批次：CoinGecko
 async function fetchCryptoBatch(cryptoHoldings) {
   if (!cryptoHoldings.length) return;
@@ -1527,6 +1634,14 @@ function getHoldingValueTWD(h) {
   const price = h.currentPrice;
   if (!price) return 0;
   return toTWD(price * h.qty, h.currency);
+}
+
+function getHoldingPnL(h) {
+  if (!h.costPrice || !h.currentPrice || h.category === 'cash') return null;
+  const pnlNative = (h.currentPrice - h.costPrice) * h.qty;
+  const pnlTWD    = toTWD(pnlNative, h.currency);
+  const pnlPct    = (h.currentPrice - h.costPrice) / h.costPrice * 100;
+  return { pnlTWD, pnlPct };
 }
 
 // ─── 目標配置 ─────────────────────────────────────────────────────────────────
