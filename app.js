@@ -1,4 +1,4 @@
-const VERSION = '2.8.0';
+const VERSION = '2.8.1';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -1223,15 +1223,18 @@ function renderHoldings(pid) {
 }
 
 // ─── 價格抓取 ────────────────────────────────────────────────────────────────
+function getEffectiveFetchCat(h) {
+  return h.fetchAs || (h.category === 'bond' ? (h.currency === 'TWD' ? 'tw_stock' : 'us_stock') : h.category);
+}
+
 async function refreshAllPrices() {
   if (isRefreshing) return;
   isRefreshing = true;
 
   const allHoldings    = profiles.flatMap(p => p.holdings);
-  const getFetchCat    = h => h.fetchAs || (h.category === 'bond' ? (h.currency === 'TWD' ? 'tw_stock' : 'us_stock') : h.category);
-  const twHoldings     = allHoldings.filter(h => !h.manualPrice && getFetchCat(h) === 'tw_stock');
-  const usHoldings     = allHoldings.filter(h => !h.manualPrice && getFetchCat(h) === 'us_stock');
-  const cryptoHoldings = allHoldings.filter(h => !h.manualPrice && getFetchCat(h) === 'crypto');
+  const twHoldings     = allHoldings.filter(h => !h.manualPrice && getEffectiveFetchCat(h) === 'tw_stock');
+  const usHoldings     = allHoldings.filter(h => !h.manualPrice && getEffectiveFetchCat(h) === 'us_stock');
+  const cryptoHoldings = allHoldings.filter(h => !h.manualPrice && getEffectiveFetchCat(h) === 'crypto');
 
   for (const h of twHoldings) await fetchTWStockPrice(h);
   await fetchUSStocksBatch(usHoldings);
@@ -1341,7 +1344,7 @@ async function checkAndExecuteScheduledPlans() {
 // 新增單筆時立即抓價
 async function fetchPriceForHolding(holding) {
   try {
-    const fetchCat = holding.fetchAs || (holding.category === 'bond' ? (holding.currency === 'TWD' ? 'tw_stock' : 'us_stock') : holding.category);
+    const fetchCat = getEffectiveFetchCat(holding);
     if (fetchCat === 'crypto') {
       await fetchCryptoPrice(holding);
     } else if (fetchCat === 'tw_stock') {
@@ -1513,7 +1516,7 @@ async function fetchHistoryViaYahoo(symbol) {
 }
 
 async function fetchTechnicalsForHolding(h) {
-  const fetchCat = h.fetchAs || h.category;
+  const fetchCat = getEffectiveFetchCat(h);
   if (fetchCat === 'crypto' || h.category === 'cash') return;
   if (!h.currentPrice) return;
 
@@ -1534,12 +1537,13 @@ async function fetchTechnicalsForHolding(h) {
 }
 
 async function refreshAllTechnicals() {
-  const techHoldings = profiles.flatMap(p => p.holdings).filter(h => {
-    const cat = h.fetchAs || h.category;
-    return !h.manualPrice && h.category !== 'cash' && cat !== 'crypto';
-  });
+  const techHoldings = profiles.flatMap(p => p.holdings).filter(h =>
+    !h.manualPrice && h.category !== 'cash' && getEffectiveFetchCat(h) !== 'crypto'
+  );
   for (const h of techHoldings) await fetchTechnicalsForHolding(h);
-  renderAll();
+  // 只更新顯示，不呼叫 renderAll()（避免觸發 refreshAllPrices 造成無限迴圈）
+  renderOverview();
+  renderProfilePanels();
 }
 
 // 加密貨幣批次：CoinGecko
