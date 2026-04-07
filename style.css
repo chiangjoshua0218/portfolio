@@ -591,6 +591,12 @@ header h1 {
   font-size: 0.72rem;
   margin-top: 1px;
 }
+.hblock-label {
+  font-size: 0.62rem;
+  color: #475569;
+  font-weight: 400;
+  margin-right: 1px;
+}
 .hblock-pnl {
   font-size: 0.7rem;
   margin-top: 2px;

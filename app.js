@@ -1,4 +1,4 @@
-const VERSION = '2.8.1';
+const VERSION = '2.8.2';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -1160,11 +1160,12 @@ function renderHoldings(pid) {
       const valueTWD = getHoldingValueTWD(h);
       let changeHtml = '';
       if (h.currentPrice && h.previousClose && cat !== 'cash') {
-        const priceDiff = h.currentPrice - h.previousClose;
-        const pct       = (priceDiff / h.previousClose * 100).toFixed(2);
-        const sign      = priceDiff >= 0 ? '+' : '';
-        const color     = priceDiff > 0 ? '#22c55e' : priceDiff < 0 ? '#ef4444' : '#94a3b8';
-        changeHtml = `<div class="hblock-change" style="color:${color}">${sign}${pct}%</div>`;
+        const priceDiff  = h.currentPrice - h.previousClose;
+        const changeTWD  = toTWD(priceDiff * h.qty, h.currency);
+        const pct        = (priceDiff / h.previousClose * 100).toFixed(2);
+        const sign       = priceDiff >= 0 ? '+' : '';
+        const color      = priceDiff > 0 ? '#22c55e' : priceDiff < 0 ? '#ef4444' : '#94a3b8';
+        changeHtml = `<div class="hblock-change" style="color:${color}"><span class="hblock-label">今日</span> ${sign}${pct}% (${sign}${formatTWD(changeTWD)})</div>`;
       }
       const noPrice = cat !== 'cash' && !h.currentPrice;
       let priceDetailHtml = '';
@@ -1180,7 +1181,7 @@ function renderHoldings(pid) {
       if (pnl) {
         const sign  = pnl.pnlTWD >= 0 ? '+' : '';
         const color = pnl.pnlTWD > 0 ? '#22c55e' : pnl.pnlTWD < 0 ? '#ef4444' : '#94a3b8';
-        pnlHtml = `<div class="hblock-pnl" style="color:${color}">${sign}${pnl.pnlPct.toFixed(2)}% (${sign}${formatTWD(pnl.pnlTWD)})</div>`;
+        pnlHtml = `<div class="hblock-pnl" style="color:${color}"><span class="hblock-label">報酬</span> ${sign}${pnl.pnlPct.toFixed(2)}% (${sign}${formatTWD(pnl.pnlTWD)})</div>`;
       }
       // 月線/季線乖離
       let maHtml = '';
@@ -1197,9 +1198,9 @@ function renderHoldings(pid) {
           return ` <span style="color:${c}">${s}${bias.toFixed(1)}%</span>`;
         };
         const parts = [];
-        if (h.ma20 != null) parts.push(`月線${fmtV(h.ma20)}${biasPart(h.bias20)}`);
-        if (h.ma60 != null) parts.push(`季線${fmtV(h.ma60)}${biasPart(h.bias60)}`);
-        maHtml = `<div class="hblock-ma">${parts.join(' · ')}</div>`;
+        if (h.ma20 != null) parts.push(`<span class="hblock-label">月線</span> ${fmtV(h.ma20)}${biasPart(h.bias20)}`);
+        if (h.ma60 != null) parts.push(`<span class="hblock-label">季線</span> ${fmtV(h.ma60)}${biasPart(h.bias60)}`);
+        maHtml = `<div class="hblock-ma">${parts.join('<br>')}</div>`;
       }
       return `<div class="hblock-item">
         <div class="hblock-name">${escHtml(h.name)}${h.symbol && h.symbol !== h.name ? `<div class="holding-symbol">${escHtml(h.symbol)}</div>` : ''}</div>
