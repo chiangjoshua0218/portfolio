@@ -1557,12 +1557,17 @@ async function fetchViaYahoo(symbol, holding, currency) {
   if (/^\d/.test(symbol) && !symbol.endsWith('.TW') && !symbol.endsWith('.TWO')) symbol = symbol + '.TW';
   const encoded   = encodeURIComponent(symbol);
   const yahooUrl  = `https://query1.finance.yahoo.com/v8/finance/chart/${encoded}?interval=1d&range=1d`;
-  const urls = IS_GITHUB_PAGES
-    ? [
-        `https://corsproxy.io/?url=${encodeURIComponent(yahooUrl)}`,
-        `https://api.allorigins.win/raw?url=${encodeURIComponent(yahooUrl)}`,
-      ]
-    : [yahooUrl, `https://query2.finance.yahoo.com/v8/finance/chart/${encoded}?interval=1d&range=1d`];
+  const isTW = symbol.endsWith('.TW') || symbol.endsWith('.TWO');
+
+  // 非台股優先走 CF Worker（server-side，無 CORS / cookie 問題）
+  const urls = [];
+  if (!isTW) urls.push(`${CF_WORKER_URL}/?symbol=${encoded}&market=us`);
+  if (IS_GITHUB_PAGES) {
+    urls.push(`https://corsproxy.io/?url=${encodeURIComponent(yahooUrl)}`);
+    urls.push(`https://api.allorigins.win/raw?url=${encodeURIComponent(yahooUrl)}`);
+  } else {
+    urls.push(yahooUrl, `https://query2.finance.yahoo.com/v8/finance/chart/${encoded}?interval=1d&range=1d`);
+  }
 
   for (const url of urls) {
     try {
