@@ -1,4 +1,4 @@
-const VERSION = '2.8.3';
+const VERSION = '2.8.4';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -1365,12 +1365,43 @@ function parsePrice(val) {
   return (isFinite(n) && n > 0) ? n : null;
 }
 
-// 台股：Yahoo Finance → MIS 即時 → TWSE afterTrading → TPEX
+// 台股：MIS 即時（proxy）→ Yahoo Finance（proxy）→ TWSE afterTrading → TPEX
 async function fetchTWStockPrice(holding) {
-  const symbol = holding.symbol.replace(/\.TW$/i, '').toUpperCase();
+  const symbol = holding.symbol.replace(/\.TW$/i, '').replace(/\.TWO$/i, '').toUpperCase();
 
-  // 策略0: Yahoo Finance（快取已知後綴；首次未知則先試 .TW 再試 .TWO）
+  // 策略0: MIS 即時 via CORS proxy（最準確，開盤中為即時成交價）
   const knownSuffix = yahooSuffixCache[symbol];
+  const markets = knownSuffix === '.TWO' ? ['otc'] : knownSuffix === '.TW' ? ['tse'] : ['tse', 'otc'];
+  for (const market of markets) {
+    const misUrl = `https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=${market}_${symbol.toLowerCase()}.tw&json=1&delay=0`;
+    const proxyUrls = IS_GITHUB_PAGES
+      ? [`https://corsproxy.io/?url=${encodeURIComponent(misUrl)}`,
+         `https://api.allorigins.win/raw?url=${encodeURIComponent(misUrl)}`]
+      : [misUrl];
+    for (const url of proxyUrls) {
+      try {
+        const res = await fetch(url);
+        if (!res.ok) continue;
+        const text = await res.text();
+        let data;
+        try { const w = JSON.parse(text); data = w.contents ? JSON.parse(w.contents) : w; }
+        catch { continue; }
+        const item = data?.msgArray?.[0];
+        if (!item) continue;
+        const price = parsePrice(item.z); // z = 即時成交價，'-' 表示未開盤
+        const prev  = parsePrice(item.y); // y = 昨收
+        if (price) {
+          holding.currentPrice  = price;
+          holding.currency      = 'TWD';
+          if (prev) holding.previousClose = prev;
+          yahooSuffixCache[symbol] = market === 'tse' ? '.TW' : '.TWO';
+          return;
+        }
+      } catch {}
+    }
+  }
+
+  // 策略1: Yahoo Finance via proxy（備援，開盤前/後用昨收）
   if (knownSuffix) {
     await fetchViaYahoo(symbol + knownSuffix, holding, 'TWD');
   } else {
@@ -1382,26 +1413,6 @@ async function fetchTWStockPrice(holding) {
     }
   }
   if (holding.currentPrice) return;
-
-  if (!IS_GITHUB_PAGES) {
-    for (const market of ['tse', 'otc']) {
-      try {
-        const res  = await fetch(`https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=${market}_${symbol.toLowerCase()}.tw&json=1&delay=0`);
-        if (!res.ok) continue;
-        const json = await res.json();
-        const item = json?.msgArray?.[0];
-        if (!item) continue;
-        const price = parsePrice(item.z);
-        const prev  = parsePrice(item.y);
-        if (price) {
-          holding.currentPrice  = price;
-          holding.currency      = 'TWD';
-          if (prev) holding.previousClose = prev;
-          return;
-        }
-      } catch {}
-    }
-  }
 
   try {
     const res  = await fetch(`https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?stockNo=${symbol}&response=json`);
