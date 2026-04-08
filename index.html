@@ -18,7 +18,7 @@
       <div class="header-title">
         <h1>📊 資產總覽</h1>
         <div class="version-info">
-          <span class="version-tag">v2.8.4</span>
+          <span class="version-tag">v2.9.0</span>
           <span class="author-tag">by joshchiang0218</span>
         </div>
       </div>
@@ -64,6 +64,10 @@
           <div class="card-label">加密貨幣</div>
           <div class="card-value" id="crypto-value">—</div>
           <div id="crypto-change" class="summary-change"></div>
+        </div>
+        <div class="card summary-card">
+          <div class="card-label" style="color:#f87171">負債</div>
+          <div class="card-value" id="debt-value" style="color:#f87171">—</div>
         </div>
       </div>
 
@@ -145,8 +149,15 @@
   <!-- DCA Modal -->
   <div id="dca-modal" class="modal" style="display:none">
     <div class="modal-content">
-      <h3>新增定期定額計畫</h3>
+      <h3>新增定期計畫</h3>
       <input type="hidden" id="dca-modal-pid" />
+      <div class="form-group">
+        <label>計畫類型</label>
+        <select id="dca-plan-type" onchange="onDcaPlanTypeChange()">
+          <option value="invest">定期投資（買股票/ETF）</option>
+          <option value="debt_payment">定期還款（償還負債）</option>
+        </select>
+      </div>
       <div class="form-group">
         <label>計畫名稱（選填）</label>
         <input type="text" id="dca-name" placeholder="例：每月買 VTI" />
@@ -162,22 +173,32 @@
       <div class="form-group">
         <label>扣款幣別（對應現金持股）</label>
         <select id="dca-currency">
-          <option value="USD">USD 美元</option>
           <option value="TWD">TWD 新台幣</option>
+          <option value="USD">USD 美元</option>
         </select>
       </div>
-      <div class="form-group">
-        <label>目標股票代號</label>
-        <input type="text" id="dca-symbol" placeholder="例：VTI、0050" />
+      <div id="dca-invest-fields">
+        <div class="form-group">
+          <label>目標股票代號</label>
+          <input type="text" id="dca-symbol" placeholder="例：VTI、0050" />
+        </div>
+        <div class="form-group">
+          <label>目標分類</label>
+          <select id="dca-category">
+            <option value="us_stock">美股</option>
+            <option value="tw_stock">台股</option>
+            <option value="bond">債券</option>
+            <option value="crypto">加密貨幣</option>
+          </select>
+        </div>
       </div>
-      <div class="form-group">
-        <label>目標分類</label>
-        <select id="dca-category">
-          <option value="us_stock">美股</option>
-          <option value="tw_stock">台股</option>
-          <option value="bond">債券</option>
-          <option value="crypto">加密貨幣</option>
-        </select>
+      <div id="dca-debt-fields" style="display:none">
+        <div class="form-group">
+          <label>目標負債</label>
+          <select id="dca-debt-id">
+            <!-- populated by JS -->
+          </select>
+        </div>
       </div>
       <div class="modal-actions">
         <button class="btn btn-primary" onclick="saveNewDcaPlan()">新增</button>
@@ -200,6 +221,7 @@
             <option value="cash">現金</option>
             <option value="bond">債券</option>
             <option value="crypto">加密貨幣</option>
+            <option value="debt">負債</option>
           </select>
         </div>
         <div class="form-group" id="symbol-group-add">
@@ -260,6 +282,7 @@
           <option value="cash">現金</option>
           <option value="bond">債券</option>
           <option value="crypto">加密貨幣</option>
+          <option value="debt">負債</option>
         </select>
       </div>
       <div class="form-group">

@@ -481,6 +481,7 @@ header h1 {
 .badge-cash     { background: #3a3010; color: #facc15; }
 .badge-bond     { background: #2d1f3a; color: #c084fc; }
 .badge-crypto   { background: #3a1f10; color: #fb923c; }
+.badge-debt     { background: #3a1010; color: #f87171; }
 
 .holding-name {
   font-size: 0.9rem;
