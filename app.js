@@ -1559,9 +1559,9 @@ async function fetchViaYahoo(symbol, holding, currency) {
   const yahooUrl  = `https://query1.finance.yahoo.com/v8/finance/chart/${encoded}?interval=1d&range=1d`;
   const isTW = symbol.endsWith('.TW') || symbol.endsWith('.TWO');
 
-  // 非台股優先走 CF Worker（server-side，無 CORS / cookie 問題）
+  // 所有股票優先走 CF Worker（server-side，無 CORS / cookie 問題）
   const urls = [];
-  if (!isTW) urls.push(`${CF_WORKER_URL}/?symbol=${encoded}&market=us`);
+  urls.push(`${CF_WORKER_URL}/?symbol=${encoded}&market=us`);
   if (IS_GITHUB_PAGES) {
     urls.push(`https://corsproxy.io/?url=${encodeURIComponent(yahooUrl)}`);
     urls.push(`https://api.allorigins.win/raw?url=${encodeURIComponent(yahooUrl)}`);
