@@ -18,7 +18,7 @@
       <div class="header-title">
         <h1>📊 資產總覽</h1>
         <div class="version-info">
-          <span class="version-tag">v2.9.0</span>
+          <span class="version-tag">v2.9.1</span>
           <span class="author-tag">by joshchiang0218</span>
         </div>
       </div>
@@ -172,9 +172,15 @@
       </div>
       <div class="form-group">
         <label>扣款幣別（對應現金持股）</label>
-        <select id="dca-currency">
+        <select id="dca-currency" onchange="onDcaCurrencyChange()">
           <option value="TWD">TWD 新台幣</option>
           <option value="USD">USD 美元</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>現金來源 <span class="hint">（對應扣款幣別）</span></label>
+        <select id="dca-cash-id">
+          <!-- populated by JS -->
         </select>
       </div>
       <div id="dca-invest-fields">
@@ -190,6 +196,13 @@
             <option value="bond">債券</option>
             <option value="crypto">加密貨幣</option>
           </select>
+        </div>
+        <div class="form-group">
+          <label>目標持股 <span class="hint">（選填，留空自動對應第一筆或新增）</span></label>
+          <select id="dca-target-holding-id">
+            <option value="">自動（第一筆相符或新增）</option>
+          </select>
+          <button type="button" class="btn btn-secondary" onclick="refreshDcaTargetHoldings()" style="margin-top:6px;font-size:0.78rem;padding:4px 10px">查詢已有持股</button>
         </div>
       </div>
       <div id="dca-debt-fields" style="display:none">

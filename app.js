@@ -1,4 +1,4 @@
-const VERSION = '2.9.0';
+const VERSION = '2.9.1';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -793,15 +793,20 @@ function renderDcaList(pid) {
   container.innerHTML = plans.map(plan => {
     const last = plan.log?.[plan.log.length - 1];
     let lastText, detailText;
+    const p2 = getProfile(pid);
+    const cashH2 = plan.sourceCashId ? p2?.holdings.find(h => h.id === plan.sourceCashId) : null;
+    const cashLabel = cashH2 ? escHtml(cashH2.name) : plan.currency;
+
     if (plan.planType === 'debt_payment') {
-      const p2 = getProfile(pid);
       const debtH = p2?.holdings.find(h => h.id === plan.targetDebtId);
       const debtName = debtH ? escHtml(debtH.name) : '已刪除的負債';
       const remaining = debtH ? `${debtH.currency} ${debtH.qty.toLocaleString()}` : '—';
-      detailText = `每月 ${plan.dayOfMonth} 日｜還款 ${plan.currency} ${Number(plan.amount).toLocaleString()} → ${debtName}（剩餘 ${remaining}）`;
+      detailText = `每月 ${plan.dayOfMonth} 日｜${cashLabel} ${Number(plan.amount).toLocaleString()} → ${debtName}（剩餘 ${remaining}）`;
       lastText = last ? `上次 ${last.date}：還款 ${last.currency} ${Number(last.amount).toLocaleString()}` : '尚未執行';
     } else {
-      detailText = `每月 ${plan.dayOfMonth} 日｜${plan.currency} ${Number(plan.amount).toLocaleString()} → ${escHtml(plan.targetSymbol)}`;
+      const targetH2 = plan.targetHoldingId ? p2?.holdings.find(h => h.id === plan.targetHoldingId) : null;
+      const targetLabel = targetH2 ? escHtml(targetH2.name) : escHtml(plan.targetSymbol);
+      detailText = `每月 ${plan.dayOfMonth} 日｜${cashLabel} ${Number(plan.amount).toLocaleString()} → ${targetLabel}`;
       lastText = last
         ? `上次 ${last.date}：+${Number(last.shares).toFixed(4)} 股 @ ${last.currency === 'USD' ? '$' : 'NT$'}${Number(last.price).toFixed(2)}`
         : '尚未執行';
@@ -829,9 +834,14 @@ function openDcaModal(pid) {
   document.getElementById('dca-symbol').value  = '';
   document.getElementById('dca-invest-fields').style.display = '';
   document.getElementById('dca-debt-fields').style.display   = 'none';
+  document.getElementById('dca-target-holding-id').innerHTML = '<option value="">自動（第一筆相符或新增）</option>';
+
+  const p = getProfile(pid);
+
+  // 填入現金來源
+  populateDcaCashOptions(p, 'TWD');
 
   // 填入負債下拉選單
-  const p = getProfile(pid);
   const debtSelect = document.getElementById('dca-debt-id');
   const debts = (p?.holdings || []).filter(h => h.category === 'debt');
   if (debts.length === 0) {
@@ -843,6 +853,43 @@ function openDcaModal(pid) {
   }
 
   document.getElementById('dca-modal').style.display = 'flex';
+}
+
+function populateDcaCashOptions(p, currency) {
+  const cashSelect = document.getElementById('dca-cash-id');
+  const cashes = (p?.holdings || []).filter(h => h.category === 'cash' && h.currency === currency);
+  if (cashes.length === 0) {
+    cashSelect.innerHTML = `<option value="">（無 ${currency} 現金持股）</option>`;
+  } else {
+    cashSelect.innerHTML = cashes.map(h =>
+      `<option value="${h.id}">${escHtml(h.name)}（${h.currency} ${h.qty.toLocaleString()}）</option>`
+    ).join('');
+  }
+}
+
+function onDcaCurrencyChange() {
+  const pid      = document.getElementById('dca-modal-pid').value;
+  const currency = document.getElementById('dca-currency').value;
+  populateDcaCashOptions(getProfile(pid), currency);
+}
+
+function refreshDcaTargetHoldings() {
+  const pid      = document.getElementById('dca-modal-pid').value;
+  const symbol   = document.getElementById('dca-symbol').value.trim().toUpperCase();
+  const category = document.getElementById('dca-category').value;
+  const select   = document.getElementById('dca-target-holding-id');
+
+  if (!symbol) { alert('請先輸入目標股票代號'); return; }
+
+  const p = getProfile(pid);
+  const matches = (p?.holdings || []).filter(h => h.symbol === symbol && h.category === category);
+
+  if (matches.length === 0) {
+    select.innerHTML = '<option value="">自動（找不到現有持股，將自動新增）</option>';
+  } else {
+    select.innerHTML = '<option value="">自動（第一筆相符或新增）</option>' +
+      matches.map(h => `<option value="${h.id}">${escHtml(h.name)}（${h.qty.toLocaleString()} 股）</option>`).join('');
+  }
 }
 
 function onDcaPlanTypeChange() {
@@ -870,6 +917,8 @@ function saveNewDcaPlan() {
 
   if (!p.scheduledPlans) p.scheduledPlans = [];
 
+  const sourceCashId = document.getElementById('dca-cash-id').value || null;
+
   if (planType === 'debt_payment') {
     const targetDebtId = document.getElementById('dca-debt-id').value;
     if (!targetDebtId) return alert('請先新增負債項目，再建立還款計畫');
@@ -882,13 +931,15 @@ function saveNewDcaPlan() {
       dayOfMonth:    day,
       amount,
       currency,
+      sourceCashId,
       targetDebtId,
       lastExecuted:  null,
       log:           [],
     });
   } else {
-    const symbol   = document.getElementById('dca-symbol').value.trim().toUpperCase();
-    const category = document.getElementById('dca-category').value;
+    const symbol          = document.getElementById('dca-symbol').value.trim().toUpperCase();
+    const category        = document.getElementById('dca-category').value;
+    const targetHoldingId = document.getElementById('dca-target-holding-id').value || null;
     if (!symbol) return alert('請輸入目標股票代號');
     p.scheduledPlans.push({
       id:           Date.now().toString(),
@@ -898,8 +949,10 @@ function saveNewDcaPlan() {
       dayOfMonth:   day,
       amount,
       currency,
+      sourceCashId,
       targetSymbol:   symbol,
       targetCategory: category,
+      targetHoldingId,
       lastExecuted:   null,
       log:            [],
     });
@@ -1343,8 +1396,10 @@ async function checkAndExecuteScheduledPlans() {
       if (plan.lastExecuted === currentYM) continue;
       if (todayDay < plan.dayOfMonth) continue;
 
-      // 找現金
-      const cashH = profile.holdings.find(h => h.category === 'cash' && h.currency === plan.currency);
+      // 找現金（優先用指定來源，否則找第一筆幣別相符的）
+      const cashH = plan.sourceCashId
+        ? profile.holdings.find(h => h.id === plan.sourceCashId)
+        : profile.holdings.find(h => h.category === 'cash' && h.currency === plan.currency);
       if (!cashH || cashH.qty < plan.amount) {
         results.push({ name: plan.name || plan.targetSymbol || plan.name, ok: false, reason: `${profile.name} 現金不足（需 ${plan.currency} ${plan.amount.toLocaleString()}）` });
         continue;
@@ -1370,8 +1425,10 @@ async function checkAndExecuteScheduledPlans() {
         continue;
       }
 
-      // 取得目標股票價格
-      let targetH = profile.holdings.find(h => h.symbol === plan.targetSymbol && h.category === plan.targetCategory);
+      // 取得目標股票價格（優先用指定持股，否則找第一筆相符的）
+      let targetH = plan.targetHoldingId
+        ? profile.holdings.find(h => h.id === plan.targetHoldingId)
+        : profile.holdings.find(h => h.symbol === plan.targetSymbol && h.category === plan.targetCategory);
       let price = targetH?.currentPrice;
       let holdingCurrency = targetH?.currency;
 
