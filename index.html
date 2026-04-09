@@ -18,7 +18,7 @@
       <div class="header-title">
         <h1>📊 資產總覽</h1>
         <div class="version-info">
-          <span class="version-tag">v2.9.1</span>
+          <span class="version-tag">v2.9.2</span>
           <span class="author-tag">by joshchiang0218</span>
         </div>
       </div>
@@ -149,8 +149,9 @@
   <!-- DCA Modal -->
   <div id="dca-modal" class="modal" style="display:none">
     <div class="modal-content">
-      <h3>新增定期計畫</h3>
+      <h3 id="dca-modal-title">新增定期計畫</h3>
       <input type="hidden" id="dca-modal-pid" />
+      <input type="hidden" id="dca-edit-id" />
       <div class="form-group">
         <label>計畫類型</label>
         <select id="dca-plan-type" onchange="onDcaPlanTypeChange()">
@@ -214,7 +215,7 @@
         </div>
       </div>
       <div class="modal-actions">
-        <button class="btn btn-primary" onclick="saveNewDcaPlan()">新增</button>
+        <button class="btn btn-primary" onclick="saveDcaPlan()">儲存</button>
         <button class="btn btn-secondary" onclick="closeDcaModal()">取消</button>
       </div>
     </div>

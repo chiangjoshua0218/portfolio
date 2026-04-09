@@ -807,6 +807,8 @@ header h1 {
   border-radius: 12px;
   padding: 24px;
   width: 360px;
+  max-height: 90vh;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 14px;

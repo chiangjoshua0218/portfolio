@@ -1,4 +1,4 @@
-const VERSION = '2.9.1';
+const VERSION = '2.9.2';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -819,6 +819,7 @@ function renderDcaList(pid) {
       </div>
       <div class="dca-actions">
         <button class="btn ${plan.enabled ? 'btn-primary' : 'btn-secondary'}" onclick="toggleDcaPlan('${pid}','${plan.id}')">${plan.enabled ? '啟用中' : '已停用'}</button>
+        <button class="btn btn-edit" onclick="openEditDcaModal('${pid}','${plan.id}')">編輯</button>
         <button class="btn btn-danger" onclick="deleteDcaPlan('${pid}','${plan.id}')">刪除</button>
       </div>
     </div>`;
@@ -826,8 +827,11 @@ function renderDcaList(pid) {
 }
 
 function openDcaModal(pid) {
-  document.getElementById('dca-modal-pid').value = pid;
-  document.getElementById('dca-plan-type').value = 'invest';
+  document.getElementById('dca-modal-pid').value  = pid;
+  document.getElementById('dca-edit-id').value    = '';
+  document.getElementById('dca-modal-title').textContent = '新增定期計畫';
+  document.getElementById('dca-plan-type').value  = 'invest';
+  document.getElementById('dca-plan-type').disabled = false;
   document.getElementById('dca-name').value    = '';
   document.getElementById('dca-day').value     = '5';
   document.getElementById('dca-amount').value  = '';
@@ -902,6 +906,46 @@ function closeDcaModal() {
   document.getElementById('dca-modal').style.display = 'none';
 }
 
+function openEditDcaModal(pid, planId) {
+  const p    = getProfile(pid);
+  const plan = p?.scheduledPlans?.find(x => x.id === planId);
+  if (!plan) return;
+
+  openDcaModal(pid); // 先用 openDcaModal 初始化所有欄位和下拉選單
+
+  // 覆寫為編輯模式
+  document.getElementById('dca-edit-id').value   = planId;
+  document.getElementById('dca-modal-title').textContent = '編輯定期計畫';
+  document.getElementById('dca-plan-type').value = plan.planType || 'invest';
+  document.getElementById('dca-plan-type').disabled = true; // 編輯時不允許切換類型
+  document.getElementById('dca-name').value      = plan.name || '';
+  document.getElementById('dca-day').value       = plan.dayOfMonth;
+  document.getElementById('dca-amount').value    = plan.amount;
+  document.getElementById('dca-currency').value  = plan.currency;
+
+  // 更新現金來源選單並選中
+  populateDcaCashOptions(p, plan.currency);
+  if (plan.sourceCashId) document.getElementById('dca-cash-id').value = plan.sourceCashId;
+
+  onDcaPlanTypeChange();
+
+  if (plan.planType === 'debt_payment') {
+    if (plan.targetDebtId) document.getElementById('dca-debt-id').value = plan.targetDebtId;
+  } else {
+    document.getElementById('dca-symbol').value   = plan.targetSymbol || '';
+    document.getElementById('dca-category').value = plan.targetCategory || 'us_stock';
+    // 填入目標持股選單
+    if (plan.targetHoldingId) {
+      const th = p.holdings.find(h => h.id === plan.targetHoldingId);
+      if (th) {
+        const sel = document.getElementById('dca-target-holding-id');
+        sel.innerHTML = `<option value="">自動（第一筆相符或新增）</option>
+          <option value="${th.id}" selected>${escHtml(th.name)}（${th.qty.toLocaleString()} 股）</option>`;
+      }
+    }
+  }
+}
+
 function saveNewDcaPlan() {
   const pid      = document.getElementById('dca-modal-pid').value;
   const p        = getProfile(pid);
@@ -961,6 +1005,46 @@ function saveNewDcaPlan() {
   saveData();
   closeDcaModal();
   renderDcaList(pid);
+}
+
+function saveDcaPlan() {
+  const editId = document.getElementById('dca-edit-id').value;
+  if (editId) {
+    // 編輯模式：更新現有計畫
+    const pid  = document.getElementById('dca-modal-pid').value;
+    const p    = getProfile(pid);
+    const plan = p?.scheduledPlans?.find(x => x.id === editId);
+    if (!plan) return;
+
+    const day      = parseInt(document.getElementById('dca-day').value);
+    const amount   = parseFloat(document.getElementById('dca-amount').value);
+    const currency = document.getElementById('dca-currency').value;
+    const name     = document.getElementById('dca-name').value.trim();
+    const sourceCashId = document.getElementById('dca-cash-id').value || null;
+
+    if (isNaN(amount) || amount <= 0) return alert('請輸入有效扣款金額');
+    if (isNaN(day) || day < 1 || day > 28) return alert('請輸入 1~28 的日期');
+
+    plan.name       = name || plan.name;
+    plan.dayOfMonth = day;
+    plan.amount     = amount;
+    plan.currency   = currency;
+    plan.sourceCashId = sourceCashId;
+
+    if (plan.planType === 'invest') {
+      plan.targetSymbol   = document.getElementById('dca-symbol').value.trim().toUpperCase() || plan.targetSymbol;
+      plan.targetCategory = document.getElementById('dca-category').value;
+      plan.targetHoldingId = document.getElementById('dca-target-holding-id').value || null;
+    } else if (plan.planType === 'debt_payment') {
+      plan.targetDebtId = document.getElementById('dca-debt-id').value || plan.targetDebtId;
+    }
+
+    saveData();
+    closeDcaModal();
+    renderDcaList(pid);
+  } else {
+    saveNewDcaPlan();
+  }
 }
 
 function toggleDcaPlan(pid, planId) {
