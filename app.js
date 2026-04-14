@@ -1,4 +1,4 @@
-const VERSION = '2.9.4';
+const VERSION = '2.9.5';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -1742,12 +1742,16 @@ function calcMA(closes, period) {
 async function fetchHistoryViaYahoo(symbol) {
   const encoded  = encodeURIComponent(symbol);
   const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encoded}?interval=1d&range=4mo`;
-  const urls = IS_GITHUB_PAGES
-    ? [
-        `https://corsproxy.io/?url=${encodeURIComponent(yahooUrl)}`,
-        `https://api.allorigins.win/raw?url=${encodeURIComponent(yahooUrl)}`,
-      ]
-    : [yahooUrl];
+  const urls = [
+    `${CF_WORKER_URL}/?symbol=${encoded}&market=us&range=4mo`,
+    ...(IS_GITHUB_PAGES
+      ? [
+          `https://corsproxy.io/?url=${encodeURIComponent(yahooUrl)}`,
+          `https://api.allorigins.win/raw?url=${encodeURIComponent(yahooUrl)}`,
+        ]
+      : [yahooUrl]
+    ),
+  ];
   for (const url of urls) {
     try {
       const res = await fetch(url);
