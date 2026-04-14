@@ -1,4 +1,4 @@
-const VERSION = '2.9.3';
+const VERSION = '2.9.4';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -1855,21 +1855,40 @@ function getCoinId(symbol) {
   return map[symbol.toUpperCase()] || symbol.toLowerCase().replace(/\s+/g, '-');
 }
 
-// 自動取得匯率
+// 自動取得匯率（多來源備援）
 async function fetchExchangeRate() {
-  try {
-    const url  = 'https://api.exchangerate-api.com/v4/latest/USD';
-    const res  = await fetch(url);
-    const json = await res.json();
-    const rate = json?.rates?.TWD;
-    if (rate) {
-      usdRate = parseFloat(rate.toFixed(2));
-      updateRateDisplay();
-      saveData();
-      renderOverview();
-      renderAllProfilePanels();
-    }
-  } catch { /* 靜默失敗，保留舊匯率 */ }
+  const sources = [
+    async () => {
+      const r = await fetch('https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json');
+      const j = await r.json();
+      return j?.usd?.twd ?? null;
+    },
+    async () => {
+      const r = await fetch('https://api.exchangerate-api.com/v4/latest/USD');
+      const j = await r.json();
+      return j?.rates?.TWD ?? null;
+    },
+    async () => {
+      const r = await fetch('https://open.er-api.com/v6/latest/USD');
+      const j = await r.json();
+      return j?.rates?.TWD ?? null;
+    },
+  ];
+
+  for (const source of sources) {
+    try {
+      const rate = await source();
+      if (rate && rate > 1) {
+        usdRate = parseFloat(parseFloat(rate).toFixed(2));
+        updateRateDisplay();
+        saveData();
+        renderOverview();
+        renderAllProfilePanels();
+        return;
+      }
+    } catch {}
+  }
+  // 所有來源失敗，保留舊匯率
 }
 
 // ─── 價值換算 ─────────────────────────────────────────────────────────────────
