@@ -1,4 +1,4 @@
-const VERSION = '2.9.2';
+const VERSION = '2.9.3';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -127,6 +127,8 @@ async function init() {
     loadFromLocalStorage();
     renderAll();
   }
+
+  fetchExchangeRate(); // 背景自動抓取最新匯率
 }
 
 function applyConfig(config) {
@@ -163,8 +165,13 @@ function renderAll() {
   renderTabs();
   renderOverview();
   renderProfilePanels();
-  document.getElementById('usd-rate').value = usdRate;
+  updateRateDisplay();
   refreshAllPrices();
+}
+
+function updateRateDisplay() {
+  const el = document.getElementById('usd-rate-tag');
+  if (el) el.textContent = `1 USD = ${usdRate} TWD`;
 }
 
 // ─── 使用者操作：首次設定檔 ───────────────────────────────────────────────────
@@ -258,12 +265,6 @@ function saveData() {
   }
 }
 
-function saveSettings() {
-  usdRate = parseFloat(document.getElementById('usd-rate').value) || 32;
-  saveData();
-  renderOverview();
-  renderAllProfilePanels();
-}
 
 // ─── 匯出 / 匯入設定檔 ────────────────────────────────────────────────────────
 function exportConfig() {
@@ -1863,13 +1864,12 @@ async function fetchExchangeRate() {
     const rate = json?.rates?.TWD;
     if (rate) {
       usdRate = parseFloat(rate.toFixed(2));
-      document.getElementById('usd-rate').value = usdRate;
-      saveSettings();
-      alert(`匯率已更新：1 USD = ${usdRate} TWD`);
+      updateRateDisplay();
+      saveData();
+      renderOverview();
+      renderAllProfilePanels();
     }
-  } catch {
-    alert('無法自動取得匯率，請手動輸入');
-  }
+  } catch { /* 靜默失敗，保留舊匯率 */ }
 }
 
 // ─── 價值換算 ─────────────────────────────────────────────────────────────────

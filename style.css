@@ -889,6 +889,22 @@ header h1 {
   color: #64748b;
 }
 
+.rate-tag {
+  font-size: 0.72rem;
+  color: #4ade80;
+  background: rgba(74, 222, 128, 0.08);
+  border: 1px solid rgba(74, 222, 128, 0.25);
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+.rate-tag:hover {
+  background: rgba(74, 222, 128, 0.15);
+}
+
 /* Today's change in summary */
 .summary-change {
   font-size: 0.8rem;
