@@ -1,4 +1,4 @@
-const VERSION = '2.9.5';
+const VERSION = '2.9.6';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -1608,10 +1608,11 @@ async function fetchTWStockPrice(holding) {
   // 策略0: Cloudflare Worker → MIS 即時 API（最準確）
   const knownSuffix = yahooSuffixCache[symbol];
   const marketHint  = knownSuffix === '.TWO' ? 'otc' : knownSuffix === '.TW' ? 'tse' : '';
-  const workerUrl   = `${CF_WORKER_URL}/?symbol=${symbol}${marketHint ? `&market=${marketHint}` : ''}`;
-  try {
-    const res = await fetch(workerUrl);
-    if (res.ok) {
+  const marketsToTry = marketHint ? [marketHint] : ['tse', 'otc'];
+  for (const mkt of marketsToTry) {
+    try {
+      const res = await fetch(`${CF_WORKER_URL}/?symbol=${symbol}&market=${mkt}`);
+      if (!res.ok) continue;
       const data  = await res.json();
       const item  = data?.msgArray?.[0];
       const price = parsePrice(item?.z);
@@ -1620,11 +1621,11 @@ async function fetchTWStockPrice(holding) {
         holding.currentPrice  = price;
         holding.currency      = 'TWD';
         if (prev) holding.previousClose = prev;
-        yahooSuffixCache[symbol] = data._market === 'otc' ? '.TWO' : '.TW';
+        yahooSuffixCache[symbol] = mkt === 'otc' ? '.TWO' : '.TW';
         return;
       }
-    }
-  } catch {}
+    } catch {}
+  }
 
   // 策略1: Yahoo Finance via proxy（備援，開盤前/後用昨收）
   if (knownSuffix) {
