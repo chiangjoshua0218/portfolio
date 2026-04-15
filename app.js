@@ -1,4 +1,4 @@
-const VERSION = '2.9.7';
+const VERSION = '2.9.8';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -1601,11 +1601,20 @@ function parsePrice(val) {
 
 const CF_WORKER_URL = 'https://tw-stock-prox.chiangjoshua0218.workers.dev';
 
+function isTWTradingHours() {
+  const twTime = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Taipei' }));
+  const day = twTime.getDay();
+  if (day === 0 || day === 6) return false;
+  const mins = twTime.getHours() * 60 + twTime.getMinutes();
+  return mins >= 9 * 60 && mins <= 13 * 60 + 30;
+}
+
 // 台股：Cloudflare Worker（MIS 即時）→ Yahoo Finance → TWSE afterTrading
 async function fetchTWStockPrice(holding) {
   const symbol = holding.symbol.replace(/\.TW$/i, '').replace(/\.TWO$/i, '').toUpperCase();
 
-  // 策略0: Cloudflare Worker → MIS 即時 API（最準確）
+  // 策略0: Cloudflare Worker → MIS 即時 API（僅交易時段，避免盤後無資料 404）
+  if (isTWTradingHours()) {
   const knownSuffix = yahooSuffixCache[symbol];
   const marketHint  = knownSuffix === '.TWO' ? 'otc' : knownSuffix === '.TW' ? 'tse' : '';
   const marketsToTry = marketHint ? [marketHint] : ['tse', 'otc'];
@@ -1626,6 +1635,7 @@ async function fetchTWStockPrice(holding) {
       }
     } catch {}
   }
+  } // end isTWTradingHours
 
   // 策略1: Yahoo Finance via proxy（備援，開盤前/後用昨收）
   if (knownSuffix) {
