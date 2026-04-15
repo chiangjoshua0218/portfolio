@@ -1,4 +1,4 @@
-const VERSION = '2.9.6';
+const VERSION = '2.9.7';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -1741,6 +1741,15 @@ function calcMA(closes, period) {
 }
 
 async function fetchHistoryViaYahoo(symbol) {
+  const CACHE_TTL = 6 * 60 * 60 * 1000; // 6小時
+  const cacheKey  = `hist_${symbol}`;
+  try {
+    const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+    if (cached && Date.now() - cached.ts < CACHE_TTL && cached.closes?.length) {
+      return cached.closes;
+    }
+  } catch {}
+
   const encoded  = encodeURIComponent(symbol);
   const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encoded}?interval=1d&range=4mo`;
   const urls = [
@@ -1762,7 +1771,11 @@ async function fetchHistoryViaYahoo(symbol) {
       try { const w = JSON.parse(text); data = w.contents ? JSON.parse(w.contents) : w; }
       catch { continue; }
       const closes = data?.chart?.result?.[0]?.indicators?.quote?.[0]?.close;
-      if (closes?.length) return closes.filter(v => v != null);
+      if (closes?.length) {
+        const filtered = closes.filter(v => v != null);
+        try { localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), closes: filtered })); } catch {}
+        return filtered;
+      }
     } catch {}
   }
   return null;
