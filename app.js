@@ -1,4 +1,4 @@
-const VERSION = '2.9.9';
+const VERSION = '3.0.0';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -1092,10 +1092,12 @@ function saveHoldingsEdit(pid) {
     const h = p.holdings.find(x => x.id === input.dataset.id);
     if (!h) return;
     const nameVal  = input.value.trim();
+    const catEl    = document.querySelector(`#holdings-list-${pid} [data-id="${h.id}"][data-field="category"]`);
     const qtyEl    = document.querySelector(`#holdings-list-${pid} [data-id="${h.id}"][data-field="qty"]`);
     const priceEl  = document.querySelector(`#holdings-list-${pid} [data-id="${h.id}"][data-field="price"]`);
     const costEl   = document.querySelector(`#holdings-list-${pid} [data-id="${h.id}"][data-field="cost"]`);
     if (nameVal) h.name = nameVal;
+    if (catEl)   h.category = catEl.value;
     if (qtyEl)   h.qty  = parseFloat(qtyEl.value) || h.qty;
     if (priceEl) {
       const mp = parseFloat(priceEl.value) || null;
@@ -1355,8 +1357,12 @@ function renderHoldings(pid) {
 
     const items = holdings.map(h => {
       if (editMode) {
+        const catOptions = Object.entries(CATEGORY_LABELS).map(([v, l]) =>
+          `<option value="${v}"${h.category === v ? ' selected' : ''}>${l}</option>`
+        ).join('');
         return `<div class="hblock-item hblock-item-edit">
           <button class="hblock-x-btn" onclick="deleteHoldingInEdit('${h.id}','${pid}')">×</button>
+          <select class="hblock-edit-input" data-id="${h.id}" data-field="category">${catOptions}</select>
           <input class="hblock-edit-input" data-id="${h.id}" data-field="name" value="${escHtml(h.name)}" placeholder="名稱">
           <input class="hblock-edit-input" data-id="${h.id}" data-field="qty" type="number" value="${h.qty}" min="0" step="any" placeholder="數量">
           <input class="hblock-edit-input" data-id="${h.id}" data-field="price" type="number" value="${h.manualPrice || ''}" min="0" step="any" placeholder="手動單價（選填）">
@@ -1412,7 +1418,6 @@ function renderHoldings(pid) {
         ? `<span style="color:#f87171">${formatTWD(valueTWD)}</span>` // 負值（如 -500,000）
         : noPrice ? '<span style="color:#475569;font-size:0.72rem">尚無價格</span>' : formatTWD(valueTWD);
       return `<div class="hblock-item">
-        <button class="hblock-edit-btn" onclick="openEdit('${h.id}','${pid}')" title="編輯">✎</button>
         <div class="hblock-name">${escHtml(h.name)}${h.symbol && h.symbol !== h.name ? `<div class="holding-symbol">${escHtml(h.symbol)}</div>` : ''}</div>
         <div class="hblock-value">${displayValue}</div>
         ${priceDetailHtml}
