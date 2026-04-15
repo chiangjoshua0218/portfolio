@@ -1,4 +1,4 @@
-const VERSION = '2.9.8';
+const VERSION = '2.9.9';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -1412,6 +1412,7 @@ function renderHoldings(pid) {
         ? `<span style="color:#f87171">${formatTWD(valueTWD)}</span>` // 負值（如 -500,000）
         : noPrice ? '<span style="color:#475569;font-size:0.72rem">尚無價格</span>' : formatTWD(valueTWD);
       return `<div class="hblock-item">
+        <button class="hblock-edit-btn" onclick="openEdit('${h.id}','${pid}')" title="編輯">✎</button>
         <div class="hblock-name">${escHtml(h.name)}${h.symbol && h.symbol !== h.name ? `<div class="holding-symbol">${escHtml(h.symbol)}</div>` : ''}</div>
         <div class="hblock-value">${displayValue}</div>
         ${priceDetailHtml}
