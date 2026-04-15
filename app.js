@@ -1,4 +1,4 @@
-const VERSION = '3.0.0';
+const VERSION = '3.0.1';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -166,12 +166,26 @@ function renderAll() {
   renderOverview();
   renderProfilePanels();
   updateRateDisplay();
+  updateStorageInfo();
   refreshAllPrices();
 }
 
 function updateRateDisplay() {
   const el = document.getElementById('usd-rate-tag');
   if (el) el.textContent = `1 USD = ${usdRate} TWD`;
+}
+
+function storageInfoHTML() {
+  if (fileHandle) {
+    return `<div class="storage-info">💾 資料來源：本機檔案 <strong>${escHtml(fileHandle.name)}</strong></div>`;
+  }
+  return `<div class="storage-info">💾 資料來源：瀏覽器 localStorage（重灌或換瀏覽器會遺失）</div>`;
+}
+
+function updateStorageInfo() {
+  // overview panel 是靜態 HTML，需手動更新；profile panels 每次重建所以不需要
+  const overviewEl = document.querySelector('#panel-overview .storage-info');
+  if (overviewEl) overviewEl.outerHTML = storageInfoHTML();
 }
 
 // ─── 使用者操作：首次設定檔 ───────────────────────────────────────────────────
@@ -499,7 +513,8 @@ function buildProfilePanelHTML(p) {
         <div class="empty-state">尚無持股，請新增資產</div>
       </div>
     </div>
-  </div>`;
+  </div>
+  ${storageInfoHTML()}`;
 }
 
 function renderProfilePanels() {
