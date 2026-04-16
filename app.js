@@ -1,4 +1,4 @@
-const VERSION = '3.0.4';
+const VERSION = '3.0.5';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -1640,31 +1640,31 @@ function isTWTradingHours() {
 
 // 台股：Cloudflare Worker（MIS 即時）→ Yahoo Finance → TWSE afterTrading
 async function fetchTWStockPrice(holding) {
-  const symbol = holding.symbol.replace(/\.TW$/i, '').replace(/\.TWO$/i, '').toUpperCase();
+  const symbol      = holding.symbol.replace(/\.TW$/i, '').replace(/\.TWO$/i, '').toUpperCase();
+  const knownSuffix = yahooSuffixCache[symbol];
 
   // 策略0: Cloudflare Worker → MIS 即時 API（僅交易時段，避免盤後無資料 404）
   if (isTWTradingHours()) {
-  const knownSuffix = yahooSuffixCache[symbol];
-  const marketHint  = knownSuffix === '.TWO' ? 'otc' : knownSuffix === '.TW' ? 'tse' : '';
-  const marketsToTry = marketHint ? [marketHint] : ['tse', 'otc'];
-  for (const mkt of marketsToTry) {
-    try {
-      const res = await fetch(`${CF_WORKER_URL}/?symbol=${symbol}&market=${mkt}`);
-      if (!res.ok) continue;
-      const data  = await res.json();
-      const item  = data?.msgArray?.[0];
-      const price = parsePrice(item?.z);
-      const prev  = parsePrice(item?.y);
-      if (price) {
-        holding.currentPrice  = price;
-        holding.currency      = 'TWD';
-        if (prev) holding.previousClose = prev;
-        yahooSuffixCache[symbol] = mkt === 'otc' ? '.TWO' : '.TW';
-        return;
-      }
-    } catch {}
+    const marketHint  = knownSuffix === '.TWO' ? 'otc' : knownSuffix === '.TW' ? 'tse' : '';
+    const marketsToTry = marketHint ? [marketHint] : ['tse', 'otc'];
+    for (const mkt of marketsToTry) {
+      try {
+        const res = await fetch(`${CF_WORKER_URL}/?symbol=${symbol}&market=${mkt}`);
+        if (!res.ok) continue;
+        const data  = await res.json();
+        const item  = data?.msgArray?.[0];
+        const price = parsePrice(item?.z);
+        const prev  = parsePrice(item?.y);
+        if (price) {
+          holding.currentPrice  = price;
+          holding.currency      = 'TWD';
+          if (prev) holding.previousClose = prev;
+          yahooSuffixCache[symbol] = mkt === 'otc' ? '.TWO' : '.TW';
+          return;
+        }
+      } catch {}
+    }
   }
-  } // end isTWTradingHours
 
   // 策略1: Yahoo Finance via proxy（備援，開盤前/後用昨收）
   if (knownSuffix) {
