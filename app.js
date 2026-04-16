@@ -1,4 +1,4 @@
-const VERSION = '3.0.3';
+const VERSION = '3.0.4';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -120,10 +120,12 @@ async function init() {
     loadFromLocalStorage();
     showPermissionBanner();
     renderAll();
+    refreshAllPrices();
   } else if (fsStatus === 'no-file') {
     loadFromLocalStorage();
     showSetupModal();
     renderAll();
+    refreshAllPrices();
   } else {
     loadFromLocalStorage();
     renderAll();
