@@ -1,4 +1,4 @@
-const VERSION = '3.0.1';
+const VERSION = '3.0.2';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -1462,22 +1462,25 @@ async function refreshAllPrices() {
   if (isRefreshing) return;
   isRefreshing = true;
 
-  const allHoldings    = profiles.flatMap(p => p.holdings);
-  const twHoldings     = allHoldings.filter(h => !h.manualPrice && getEffectiveFetchCat(h) === 'tw_stock');
-  const usHoldings     = allHoldings.filter(h => !h.manualPrice && getEffectiveFetchCat(h) === 'us_stock');
-  const cryptoHoldings = allHoldings.filter(h => !h.manualPrice && getEffectiveFetchCat(h) === 'crypto');
+  try {
+    const allHoldings    = profiles.flatMap(p => p.holdings);
+    const twHoldings     = allHoldings.filter(h => !h.manualPrice && getEffectiveFetchCat(h) === 'tw_stock');
+    const usHoldings     = allHoldings.filter(h => !h.manualPrice && getEffectiveFetchCat(h) === 'us_stock');
+    const cryptoHoldings = allHoldings.filter(h => !h.manualPrice && getEffectiveFetchCat(h) === 'crypto');
 
-  for (const h of twHoldings) await fetchTWStockPrice(h);
-  await fetchUSStocksBatch(usHoldings);
-  await fetchCryptoBatch(cryptoHoldings);
+    for (const h of twHoldings) await fetchTWStockPrice(h);
+    await fetchUSStocksBatch(usHoldings);
+    await fetchCryptoBatch(cryptoHoldings);
 
-  saveData();
-  renderAll();
+    saveData();
+    renderAll();
 
-  document.getElementById('last-updated').textContent = `最後更新：${new Date().toLocaleString('zh-TW')}`;
-  isRefreshing = false;
-  checkAndExecuteScheduledPlans();
-  refreshAllTechnicals(); // 非阻塞，背景計算技術指標
+    document.getElementById('last-updated').textContent = `最後更新：${new Date().toLocaleString('zh-TW')}`;
+    checkAndExecuteScheduledPlans();
+    refreshAllTechnicals();
+  } finally {
+    isRefreshing = false;
+  }
 }
 
 // ─── 定期定額執行 ─────────────────────────────────────────────────────────────
