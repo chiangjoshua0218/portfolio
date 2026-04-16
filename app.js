@@ -1,4 +1,4 @@
-const VERSION = '3.0.2';
+const VERSION = '3.0.3';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -115,6 +115,7 @@ async function init() {
       console.warn('讀取設定檔失敗，使用 localStorage:', e);
     }
     renderAll();
+    refreshAllPrices();
   } else if (fsStatus === 'needs-permission') {
     loadFromLocalStorage();
     showPermissionBanner();
@@ -126,6 +127,7 @@ async function init() {
   } else {
     loadFromLocalStorage();
     renderAll();
+    refreshAllPrices();
   }
 
   fetchExchangeRate(); // 背景自動抓取最新匯率
@@ -167,7 +169,6 @@ function renderAll() {
   renderProfilePanels();
   updateRateDisplay();
   updateStorageInfo();
-  refreshAllPrices();
 }
 
 function updateRateDisplay() {
@@ -219,6 +220,7 @@ async function onOpenExistingFile() {
     }
     hideSetupModal();
     renderAll();
+    refreshAllPrices();
   } catch (e) {
     if (e.name !== 'AbortError') alert('開啟設定檔失敗：' + e.message);
   }
@@ -236,6 +238,7 @@ async function onRequestPermission() {
       } catch {}
       hidePermissionBanner();
       renderAll();
+      refreshAllPrices();
     }
   } catch (e) {
     console.error(e);
