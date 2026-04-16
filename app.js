@@ -1,4 +1,4 @@
-const VERSION = '3.0.5';
+const VERSION = '3.0.6';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -1473,7 +1473,10 @@ async function refreshAllPrices() {
     const usHoldings     = allHoldings.filter(h => !h.manualPrice && getEffectiveFetchCat(h) === 'us_stock');
     const cryptoHoldings = allHoldings.filter(h => !h.manualPrice && getEffectiveFetchCat(h) === 'crypto');
 
-    for (const h of twHoldings) await fetchTWStockPrice(h);
+    for (const h of twHoldings) {
+      await fetchTWStockPrice(h);
+      await new Promise(r => setTimeout(r, 200)); // 避免連續請求被 Yahoo Finance 限速
+    }
     await fetchUSStocksBatch(usHoldings);
     await fetchCryptoBatch(cryptoHoldings);
 
@@ -1753,7 +1756,12 @@ async function fetchViaYahoo(symbol, holding, currency) {
 
   for (const url of urls) {
     try {
-      const res = await fetch(url);
+      let res = await fetch(url);
+      // 502 通常是 Yahoo Finance 限速，等 1 秒後重試一次
+      if (res.status === 502) {
+        await new Promise(r => setTimeout(r, 1000));
+        res = await fetch(url);
+      }
       if (!res.ok) continue;
       const text = await res.text();
       let data;
