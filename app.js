@@ -1,4 +1,4 @@
-const VERSION = '3.0.6';
+const VERSION = '3.0.7';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -1673,11 +1673,19 @@ async function fetchTWStockPrice(holding) {
   if (knownSuffix) {
     await fetchViaYahoo(symbol + knownSuffix, holding, 'TWD');
   } else {
+    // 先清空，才能判斷 fetch 是否真的成功（避免誤判舊價格）
+    const prevPrice = holding.currentPrice;
+    holding.currentPrice = null;
     await fetchViaYahoo(symbol + '.TW', holding, 'TWD');
-    if (holding.currentPrice) { yahooSuffixCache[symbol] = '.TW'; }
-    else {
+    if (holding.currentPrice) {
+      yahooSuffixCache[symbol] = '.TW';
+    } else {
       await fetchViaYahoo(symbol + '.TWO', holding, 'TWD');
-      if (holding.currentPrice) yahooSuffixCache[symbol] = '.TWO';
+      if (holding.currentPrice) {
+        yahooSuffixCache[symbol] = '.TWO';
+      } else {
+        holding.currentPrice = prevPrice; // 兩者都失敗，還原舊價格
+      }
     }
   }
   if (holding.currentPrice) return;
