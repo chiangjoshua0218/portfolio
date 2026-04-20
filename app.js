@@ -1,4 +1,4 @@
-const VERSION = '3.0.9';
+const VERSION = '3.1.0';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -35,7 +35,7 @@ let profileHistoricalCharts = {}; // { [pid]: Chart instance }
 let holdingsSortBy        = {}; // { [profileId]: 'none'|'value' }
 let holdingsEditMode      = {}; // { [profileId]: boolean }
 let isRefreshing          = false;
-const yahooSuffixCache    = {}; // { [symbol]: '.TW'|'.TWO' } 快取已知後綴
+const twMarketCache       = {}; // { [symbol]: 'tse'|'otc' } 快取已知市場
 let fileHandle            = null;
 const FILE_API_SUPPORTED = 'showOpenFilePicker' in window;
 
@@ -136,7 +136,7 @@ async function init() {
 
   // 盤中每 90 秒自動更新股價
   setInterval(() => {
-    if (isTWTradingHours()) refreshAllPrices();
+    if (isTWMisAvailable()) refreshAllPrices();
   }, 90 * 1000);
 }
 
@@ -166,7 +166,6 @@ function applyConfig(config) {
     holdingsSortBy[p.id] = holdingsSortBy[p.id] || 'none';
     if (!p.targetAllocations)   p.targetAllocations = { tw_stock: 0, us_stock: 0, cash: 0, bond: 0, crypto: 0 };
     if (!p.historicalRecords)   p.historicalRecords = [];
-    if (!p.scheduledPlans)      p.scheduledPlans = [];
   });
 }
 
@@ -394,7 +393,6 @@ function addProfile() {
     name: name.trim(),
     holdings: [],
     targetAllocations: { tw_stock: 0, us_stock: 0, cash: 0, bond: 0, crypto: 0 },
-    scheduledPlans: [],
   });
   holdingsSortBy[id] = 'none';
   saveData();
@@ -490,18 +488,6 @@ function buildProfilePanelHTML(p) {
     </div>
     <div class="card-body" id="body-target-${pid}">
       <div id="target-cards-${pid}"></div>
-    </div>
-  </div>
-
-  <!-- 定期定額 -->
-  <div class="card">
-    <div class="card-header">
-      <h2>定期定額</h2>
-      <button class="btn btn-primary" style="padding:0.25rem 0.75rem;font-size:0.8rem" onclick="openDcaModal('${pid}')">＋ 新增計畫</button>
-      <button class="btn-collapse" onclick="toggleCard('body-dca-${pid}')">−</button>
-    </div>
-    <div class="card-body" id="body-dca-${pid}">
-      <div id="dca-list-${pid}"></div>
     </div>
   </div>
 
@@ -622,7 +608,6 @@ function renderProfilePanel(pid) {
   renderProfileChart(pid);
   renderProfileHistoricalChart(pid);
   renderProfileHistoricalRecordsList(pid);
-  renderDcaList(pid);
 }
 
 // ─── Overview 渲染 ────────────────────────────────────────────────────────────
@@ -803,294 +788,6 @@ function addHolding(e, profileId, formSuffix) {
       renderOverview();
     });
   }
-}
-
-// ─── 定期定額 UI ──────────────────────────────────────────────────────────────
-function renderDcaList(pid) {
-  const p = getProfile(pid);
-  if (!p) return;
-  const container = document.getElementById(`dca-list-${pid}`);
-  if (!container) return;
-  const plans = p.scheduledPlans || [];
-  if (plans.length === 0) {
-    container.innerHTML = '<div class="empty-state">尚無計畫</div>';
-    return;
-  }
-  container.innerHTML = plans.map(plan => {
-    const last = plan.log?.[plan.log.length - 1];
-    let lastText, detailText;
-    const p2 = getProfile(pid);
-    const cashH2 = plan.sourceCashId ? p2?.holdings.find(h => h.id === plan.sourceCashId) : null;
-    const cashLabel = cashH2 ? escHtml(cashH2.name) : plan.currency;
-
-    if (plan.planType === 'debt_payment') {
-      const debtH = p2?.holdings.find(h => h.id === plan.targetDebtId);
-      const debtName = debtH ? escHtml(debtH.name) : '已刪除的負債';
-      const remaining = debtH ? `${debtH.currency} ${debtH.qty.toLocaleString()}` : '—';
-      detailText = `每月 ${plan.dayOfMonth} 日｜${cashLabel} ${Number(plan.amount).toLocaleString()} → ${debtName}（剩餘 ${remaining}）`;
-      lastText = last ? `上次 ${last.date}：還款 ${last.currency} ${Number(last.amount).toLocaleString()}` : '尚未執行';
-    } else {
-      const targetH2 = plan.targetHoldingId ? p2?.holdings.find(h => h.id === plan.targetHoldingId) : null;
-      const targetLabel = targetH2 ? escHtml(targetH2.name) : escHtml(plan.targetSymbol);
-      detailText = `每月 ${plan.dayOfMonth} 日｜${cashLabel} ${Number(plan.amount).toLocaleString()} → ${targetLabel}`;
-      lastText = last
-        ? `上次 ${last.date}：+${Number(last.shares).toFixed(4)} 股 @ ${last.currency === 'USD' ? '$' : 'NT$'}${Number(last.price).toFixed(2)}`
-        : '尚未執行';
-    }
-    return `<div class="dca-item">
-      <div class="dca-info">
-        <div class="dca-name">${escHtml(plan.name || plan.targetSymbol || '還款計畫')}</div>
-        <div class="dca-detail">${detailText}</div>
-        <div class="dca-last">${lastText}</div>
-      </div>
-      <div class="dca-actions">
-        <button class="btn ${plan.enabled ? 'btn-primary' : 'btn-secondary'}" onclick="toggleDcaPlan('${pid}','${plan.id}')">${plan.enabled ? '啟用中' : '已停用'}</button>
-        <button class="btn btn-edit" onclick="openEditDcaModal('${pid}','${plan.id}')">編輯</button>
-        <button class="btn btn-danger" onclick="deleteDcaPlan('${pid}','${plan.id}')">刪除</button>
-      </div>
-    </div>`;
-  }).join('');
-}
-
-function openDcaModal(pid) {
-  document.getElementById('dca-modal-pid').value  = pid;
-  document.getElementById('dca-edit-id').value    = '';
-  document.getElementById('dca-modal-title').textContent = '新增定期計畫';
-  document.getElementById('dca-plan-type').value  = 'invest';
-  document.getElementById('dca-plan-type').disabled = false;
-  document.getElementById('dca-name').value    = '';
-  document.getElementById('dca-day').value     = '5';
-  document.getElementById('dca-amount').value  = '';
-  document.getElementById('dca-symbol').value  = '';
-  document.getElementById('dca-invest-fields').style.display = '';
-  document.getElementById('dca-debt-fields').style.display   = 'none';
-  document.getElementById('dca-target-holding-id').innerHTML = '<option value="">自動（第一筆相符或新增）</option>';
-
-  const p = getProfile(pid);
-
-  // 填入現金來源
-  populateDcaCashOptions(p, 'TWD');
-
-  // 填入負債下拉選單
-  const debtSelect = document.getElementById('dca-debt-id');
-  const debts = (p?.holdings || []).filter(h => h.category === 'debt');
-  if (debts.length === 0) {
-    debtSelect.innerHTML = '<option value="">（無負債項目）</option>';
-  } else {
-    debtSelect.innerHTML = debts.map(h =>
-      `<option value="${h.id}">${escHtml(h.name)}（${h.currency} ${h.qty.toLocaleString()}）</option>`
-    ).join('');
-  }
-
-  document.getElementById('dca-modal').style.display = 'flex';
-}
-
-function populateDcaCashOptions(p, currency) {
-  const cashSelect = document.getElementById('dca-cash-id');
-  const cashes = (p?.holdings || []).filter(h => h.category === 'cash' && h.currency === currency);
-  if (cashes.length === 0) {
-    cashSelect.innerHTML = `<option value="">（無 ${currency} 現金持股）</option>`;
-  } else {
-    cashSelect.innerHTML = cashes.map(h =>
-      `<option value="${h.id}">${escHtml(h.name)}（${h.currency} ${h.qty.toLocaleString()}）</option>`
-    ).join('');
-  }
-}
-
-function onDcaCurrencyChange() {
-  const pid      = document.getElementById('dca-modal-pid').value;
-  const currency = document.getElementById('dca-currency').value;
-  populateDcaCashOptions(getProfile(pid), currency);
-}
-
-function refreshDcaTargetHoldings() {
-  const pid      = document.getElementById('dca-modal-pid').value;
-  const symbol   = document.getElementById('dca-symbol').value.trim().toUpperCase();
-  const category = document.getElementById('dca-category').value;
-  const select   = document.getElementById('dca-target-holding-id');
-
-  if (!symbol) { alert('請先輸入目標股票代號'); return; }
-
-  const p = getProfile(pid);
-  const matches = (p?.holdings || []).filter(h => h.symbol === symbol && h.category === category);
-
-  if (matches.length === 0) {
-    select.innerHTML = '<option value="">自動（找不到現有持股，將自動新增）</option>';
-  } else {
-    select.innerHTML = '<option value="">自動（第一筆相符或新增）</option>' +
-      matches.map(h => `<option value="${h.id}">${escHtml(h.name)}（${h.qty.toLocaleString()} 股）</option>`).join('');
-  }
-}
-
-function onDcaPlanTypeChange() {
-  const type = document.getElementById('dca-plan-type').value;
-  document.getElementById('dca-invest-fields').style.display = type === 'invest' ? '' : 'none';
-  document.getElementById('dca-debt-fields').style.display   = type === 'debt_payment' ? '' : 'none';
-}
-
-function closeDcaModal() {
-  document.getElementById('dca-modal').style.display = 'none';
-}
-
-function openEditDcaModal(pid, planId) {
-  const p    = getProfile(pid);
-  const plan = p?.scheduledPlans?.find(x => x.id === planId);
-  if (!plan) return;
-
-  openDcaModal(pid); // 先用 openDcaModal 初始化所有欄位和下拉選單
-
-  // 覆寫為編輯模式
-  document.getElementById('dca-edit-id').value   = planId;
-  document.getElementById('dca-modal-title').textContent = '編輯定期計畫';
-  document.getElementById('dca-plan-type').value = plan.planType || 'invest';
-  document.getElementById('dca-plan-type').disabled = true; // 編輯時不允許切換類型
-  document.getElementById('dca-name').value      = plan.name || '';
-  document.getElementById('dca-day').value       = plan.dayOfMonth;
-  document.getElementById('dca-amount').value    = plan.amount;
-  document.getElementById('dca-currency').value  = plan.currency;
-
-  // 更新現金來源選單並選中
-  populateDcaCashOptions(p, plan.currency);
-  if (plan.sourceCashId) document.getElementById('dca-cash-id').value = plan.sourceCashId;
-
-  onDcaPlanTypeChange();
-
-  if (plan.planType === 'debt_payment') {
-    if (plan.targetDebtId) document.getElementById('dca-debt-id').value = plan.targetDebtId;
-  } else {
-    document.getElementById('dca-symbol').value   = plan.targetSymbol || '';
-    document.getElementById('dca-category').value = plan.targetCategory || 'us_stock';
-    // 填入目標持股選單
-    if (plan.targetHoldingId) {
-      const th = p.holdings.find(h => h.id === plan.targetHoldingId);
-      if (th) {
-        const sel = document.getElementById('dca-target-holding-id');
-        sel.innerHTML = `<option value="">自動（第一筆相符或新增）</option>
-          <option value="${th.id}" selected>${escHtml(th.name)}（${th.qty.toLocaleString()} 股）</option>`;
-      }
-    }
-  }
-}
-
-function saveNewDcaPlan() {
-  const pid      = document.getElementById('dca-modal-pid').value;
-  const p        = getProfile(pid);
-  if (!p) return;
-  const planType = document.getElementById('dca-plan-type').value;
-  const name     = document.getElementById('dca-name').value.trim();
-  const day      = parseInt(document.getElementById('dca-day').value);
-  const amount   = parseFloat(document.getElementById('dca-amount').value);
-  const currency = document.getElementById('dca-currency').value;
-
-  if (isNaN(amount) || amount <= 0) return alert('請輸入有效扣款金額');
-  if (isNaN(day) || day < 1 || day > 28) return alert('請輸入 1~28 的日期');
-
-  if (!p.scheduledPlans) p.scheduledPlans = [];
-
-  const sourceCashId = document.getElementById('dca-cash-id').value || null;
-
-  if (planType === 'debt_payment') {
-    const targetDebtId = document.getElementById('dca-debt-id').value;
-    if (!targetDebtId) return alert('請先新增負債項目，再建立還款計畫');
-    const debtH = p.holdings.find(h => h.id === targetDebtId);
-    p.scheduledPlans.push({
-      id:            Date.now().toString(),
-      planType:      'debt_payment',
-      name:          name || `每月還 ${debtH?.name || '負債'}`,
-      enabled:       true,
-      dayOfMonth:    day,
-      amount,
-      currency,
-      sourceCashId,
-      targetDebtId,
-      lastExecuted:  null,
-      log:           [],
-    });
-  } else {
-    const symbol          = document.getElementById('dca-symbol').value.trim().toUpperCase();
-    const category        = document.getElementById('dca-category').value;
-    const targetHoldingId = document.getElementById('dca-target-holding-id').value || null;
-    if (!symbol) return alert('請輸入目標股票代號');
-    p.scheduledPlans.push({
-      id:           Date.now().toString(),
-      planType:     'invest',
-      name:         name || `每月買 ${symbol}`,
-      enabled:      true,
-      dayOfMonth:   day,
-      amount,
-      currency,
-      sourceCashId,
-      targetSymbol:   symbol,
-      targetCategory: category,
-      targetHoldingId,
-      lastExecuted:   null,
-      log:            [],
-    });
-  }
-
-  saveData();
-  closeDcaModal();
-  renderDcaList(pid);
-}
-
-function saveDcaPlan() {
-  const editId = document.getElementById('dca-edit-id').value;
-  if (editId) {
-    // 編輯模式：更新現有計畫
-    const pid  = document.getElementById('dca-modal-pid').value;
-    const p    = getProfile(pid);
-    const plan = p?.scheduledPlans?.find(x => x.id === editId);
-    if (!plan) return;
-
-    const day      = parseInt(document.getElementById('dca-day').value);
-    const amount   = parseFloat(document.getElementById('dca-amount').value);
-    const currency = document.getElementById('dca-currency').value;
-    const name     = document.getElementById('dca-name').value.trim();
-    const sourceCashId = document.getElementById('dca-cash-id').value || null;
-
-    if (isNaN(amount) || amount <= 0) return alert('請輸入有效扣款金額');
-    if (isNaN(day) || day < 1 || day > 28) return alert('請輸入 1~28 的日期');
-
-    plan.name       = name || plan.name;
-    plan.dayOfMonth = day;
-    plan.amount     = amount;
-    plan.currency   = currency;
-    plan.sourceCashId = sourceCashId;
-
-    if (plan.planType === 'invest') {
-      plan.targetSymbol   = document.getElementById('dca-symbol').value.trim().toUpperCase() || plan.targetSymbol;
-      plan.targetCategory = document.getElementById('dca-category').value;
-      plan.targetHoldingId = document.getElementById('dca-target-holding-id').value || null;
-    } else if (plan.planType === 'debt_payment') {
-      plan.targetDebtId = document.getElementById('dca-debt-id').value || plan.targetDebtId;
-    }
-
-    saveData();
-    closeDcaModal();
-    renderDcaList(pid);
-  } else {
-    saveNewDcaPlan();
-  }
-}
-
-function toggleDcaPlan(pid, planId) {
-  const p = getProfile(pid);
-  if (!p) return;
-  const plan = p.scheduledPlans?.find(x => x.id === planId);
-  if (!plan) return;
-  plan.enabled = !plan.enabled;
-  saveData();
-  renderDcaList(pid);
-}
-
-function deleteDcaPlan(pid, planId) {
-  const p = getProfile(pid);
-  if (!p) return;
-  const plan = p.scheduledPlans?.find(x => x.id === planId);
-  if (!confirm(`確定要刪除「${plan?.name || planId}」計畫？`)) return;
-  p.scheduledPlans = p.scheduledPlans.filter(x => x.id !== planId);
-  saveData();
-  renderDcaList(pid);
 }
 
 // ─── 持股編輯模式 ────────────────────────────────────────────────────────────
@@ -1489,127 +1186,9 @@ async function refreshAllPrices() {
     renderAll();
 
     document.getElementById('last-updated').textContent = `最後更新：${new Date().toLocaleString('zh-TW')}`;
-    checkAndExecuteScheduledPlans();
     refreshAllTechnicals();
   } finally {
     isRefreshing = false;
-  }
-}
-
-// ─── 定期定額執行 ─────────────────────────────────────────────────────────────
-async function checkAndExecuteScheduledPlans() {
-  const today    = new Date();
-  const yy       = today.getFullYear();
-  const mm       = String(today.getMonth() + 1).padStart(2, '0');
-  const currentYM  = `${yy}-${mm}`;
-  const todayDay   = today.getDate();
-  const todayStr   = today.toISOString().split('T')[0];
-
-  // 6 個月前的日期（用於清除舊 log）
-  const cutoffDate = new Date(today);
-  cutoffDate.setMonth(cutoffDate.getMonth() - 6);
-  const cutoff = cutoffDate.toISOString().split('T')[0];
-
-  const results = [];
-
-  for (const profile of profiles) {
-    for (const plan of (profile.scheduledPlans || [])) {
-      if (!plan.enabled) continue;
-      if (plan.lastExecuted === currentYM) continue;
-      if (todayDay < plan.dayOfMonth) continue;
-
-      // 找現金（優先用指定來源，否則找第一筆幣別相符的）
-      const cashH = plan.sourceCashId
-        ? profile.holdings.find(h => h.id === plan.sourceCashId)
-        : profile.holdings.find(h => h.category === 'cash' && h.currency === plan.currency);
-      if (!cashH || cashH.qty < plan.amount) {
-        results.push({ name: plan.name || plan.targetSymbol || plan.name, ok: false, reason: `${profile.name} 現金不足（需 ${plan.currency} ${plan.amount.toLocaleString()}）` });
-        continue;
-      }
-
-      // 還款計畫
-      if (plan.planType === 'debt_payment') {
-        const debtH = profile.holdings.find(h => h.id === plan.targetDebtId);
-        if (!debtH) {
-          results.push({ name: plan.name, ok: false, reason: `找不到對應的負債項目` });
-          continue;
-        }
-        cashH.qty -= plan.amount;
-        const payInDebtCurrency = plan.currency === debtH.currency
-          ? plan.amount
-          : plan.currency === 'USD' ? plan.amount * usdRate : plan.amount / usdRate;
-        debtH.qty = Math.max(0, debtH.qty - payInDebtCurrency);
-        plan.lastExecuted = currentYM;
-        if (!plan.log) plan.log = [];
-        plan.log.push({ date: todayStr, amount: plan.amount, currency: plan.currency });
-        plan.log = plan.log.filter(l => l.date >= cutoff);
-        results.push({ name: plan.name, profile: profile.name, ok: true, debtPayment: true, amount: plan.amount, currency: plan.currency, debtName: debtH.name, remaining: debtH.qty });
-        continue;
-      }
-
-      // 取得目標股票價格（優先用指定持股，否則找第一筆相符的）
-      let targetH = plan.targetHoldingId
-        ? profile.holdings.find(h => h.id === plan.targetHoldingId)
-        : profile.holdings.find(h => h.symbol === plan.targetSymbol && h.category === plan.targetCategory);
-      let price = targetH?.currentPrice;
-      let holdingCurrency = targetH?.currency;
-
-      if (!price) {
-        const temp = { symbol: plan.targetSymbol, category: plan.targetCategory, currency: plan.targetCurrency || (plan.currency === 'TWD' ? 'TWD' : 'USD'), qty: 0 };
-        await fetchPriceForHolding(temp);
-        price = temp.currentPrice;
-        holdingCurrency = temp.currency;
-      }
-
-      if (!price) {
-        results.push({ name: plan.name || plan.targetSymbol, ok: false, reason: `無法取得 ${plan.targetSymbol} 股價` });
-        continue;
-      }
-
-      // 換算：扣款金額轉成持股幣別的單價
-      const amountInHoldingCurrency = plan.currency === holdingCurrency
-        ? plan.amount
-        : plan.currency === 'USD' ? plan.amount * usdRate : plan.amount / usdRate;
-      const shares = amountInHoldingCurrency / price;
-
-      // 執行扣款
-      cashH.qty -= plan.amount;
-
-      // 加股數
-      if (targetH) {
-        targetH.qty += shares;
-      } else {
-        profile.holdings.push({
-          id: Date.now().toString() + Math.random().toString(36).slice(2),
-          category: plan.targetCategory,
-          symbol: plan.targetSymbol,
-          name: plan.targetSymbol,
-          qty: shares,
-          currency: holdingCurrency || (plan.currency === 'TWD' ? 'TWD' : 'USD'),
-          manualPrice: null,
-          currentPrice: price,
-        });
-      }
-
-      // 更新計畫狀態
-      plan.lastExecuted = currentYM;
-      if (!plan.log) plan.log = [];
-      plan.log.push({ date: todayStr, amount: plan.amount, currency: plan.currency, price, shares });
-      plan.log = plan.log.filter(l => l.date >= cutoff);
-
-      results.push({ name: plan.name || plan.targetSymbol, profile: profile.name, ok: true, shares: shares.toFixed(4), price, currency: plan.currency, amount: plan.amount });
-    }
-  }
-
-  if (results.length > 0) {
-    saveData();
-    renderAll();
-    const msg = results.map(r => {
-      if (!r.ok) return `❌ ${r.name}：${r.reason}`;
-      if (r.debtPayment) return `✅ ${r.profile}｜${r.name}：還款 ${r.currency} ${r.amount.toLocaleString()} → ${r.debtName}（剩餘 ${r.currency} ${r.remaining.toLocaleString()}）`;
-      return `✅ ${r.profile}｜${r.name}：買入 ${r.shares} 股 @ ${r.currency === 'USD' ? '$' : 'NT$'}${r.price.toFixed(2)}，扣款 ${r.currency} ${r.amount.toLocaleString()}`;
-    }).join('\n');
-    alert('📅 定期計畫執行結果\n\n' + msg);
   }
 }
 
@@ -1638,105 +1217,75 @@ function parsePrice(val) {
 
 const CF_WORKER_URL = 'https://tw-stock-prox.chiangjoshua0218.workers.dev';
 
-function isTWTradingHours() {
-  const twTime = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Taipei' }));
-  const day = twTime.getDay();
+// 台股 MIS API 可用時段：週一~五 08:30~20:00
+function isTWMisAvailable() {
+  const tw = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Taipei' }));
+  const day = tw.getDay();
   if (day === 0 || day === 6) return false;
-  const mins = twTime.getHours() * 60 + twTime.getMinutes();
-  return mins >= 9 * 60 && mins <= 13 * 60 + 30;
+  const mins = tw.getHours() * 60 + tw.getMinutes();
+  return mins >= 8 * 60 + 30 && mins <= 20 * 60;
 }
 
-// 台股：Cloudflare Worker（MIS 即時）→ Yahoo Finance → TWSE afterTrading
+// 台股：MIS → TWSE afterTrading → Yahoo Finance
 async function fetchTWStockPrice(holding) {
-  const symbol      = holding.symbol.replace(/\.TW$/i, '').replace(/\.TWO$/i, '').toUpperCase();
-  const knownSuffix = yahooSuffixCache[symbol];
+  const symbol = holding.symbol.replace(/\.TWO?$/i, '').toUpperCase();
+  const knownMarket = twMarketCache[symbol]; // 'tse' | 'otc' | undefined
 
-  // 策略0: Cloudflare Worker → MIS 即時 API（僅交易時段，避免盤後無資料 404）
-  if (isTWTradingHours()) {
-    const marketHint  = knownSuffix === '.TWO' ? 'otc' : knownSuffix === '.TW' ? 'tse' : '';
-    const marketsToTry = marketHint ? [marketHint] : ['tse', 'otc'];
-    for (const mkt of marketsToTry) {
+  // 主要策略：TWSE MIS API
+  if (isTWMisAvailable()) {
+    const markets = knownMarket ? [knownMarket] : ['tse', 'otc'];
+    for (const mkt of markets) {
       try {
         const res = await fetch(`${CF_WORKER_URL}/?symbol=${symbol}&market=${mkt}`);
         if (!res.ok) continue;
         const data  = await res.json();
         const item  = data?.msgArray?.[0];
-        // z='-' 表示當下兩筆成交之間，改用開盤價 o 作為替代
         const price = parsePrice(item?.z) || parsePrice(item?.o);
         const prev  = parsePrice(item?.y);
         if (price) {
           holding.currentPrice  = price;
           holding.currency      = 'TWD';
           if (prev) holding.previousClose = prev;
-          yahooSuffixCache[symbol] = mkt === 'otc' ? '.TWO' : '.TW';
+          twMarketCache[symbol] = mkt;
           return;
         }
       } catch {}
     }
   }
 
-  // 策略1: Yahoo Finance via proxy（備援，開盤前/後用昨收）
-  if (knownSuffix) {
-    await fetchViaYahoo(symbol + knownSuffix, holding, 'TWD');
-  } else {
-    // 先清空，才能判斷 fetch 是否真的成功（避免誤判舊價格）
-    const prevPrice = holding.currentPrice;
-    holding.currentPrice = null;
-    await fetchViaYahoo(symbol + '.TW', holding, 'TWD');
-    if (holding.currentPrice) {
-      yahooSuffixCache[symbol] = '.TW';
-    } else {
-      await fetchViaYahoo(symbol + '.TWO', holding, 'TWD');
-      if (holding.currentPrice) {
-        yahooSuffixCache[symbol] = '.TWO';
-      } else {
-        holding.currentPrice = prevPrice; // 兩者都失敗，還原舊價格
-      }
-    }
-  }
-  if (holding.currentPrice) return;
-
+  // 備援策略：TWSE afterTrading API（TSE 股收盤後或週末）
   try {
-    const res  = await fetch(`https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?stockNo=${symbol}&response=json`);
+    const res = await fetch(`https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?stockNo=${symbol}&response=json`);
     if (res.ok) {
       const json = await res.json();
-      if (json.stat === 'OK' && Array.isArray(json.data) && json.data.length > 0) {
-        const last   = json.data[json.data.length - 1];
-        const price  = parsePrice(last[6]);
-        const change = parseFloat((last[7] || '').replace(/,/g, '') || '0');
+      if (json.stat === 'OK' && json.data?.length) {
+        const last  = json.data[json.data.length - 1];
+        const price = parsePrice(last[6]);
         if (price) {
           holding.currentPrice = price;
           holding.currency     = 'TWD';
-          if (!isNaN(change)) {
-            const prev = price - change;
-            if (prev > 0) holding.previousClose = prev;
-          }
+          const change = parseFloat((last[7] || '').replace(/,/g, '') || '0');
+          if (!isNaN(change) && price - change > 0) holding.previousClose = price - change;
+          if (!twMarketCache[symbol]) twMarketCache[symbol] = 'tse';
           return;
         }
       }
     }
   } catch {}
 
-  if (!IS_GITHUB_PAGES) {
-    try {
-      const res  = await fetch('https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes');
-      if (res.ok) {
-        const data  = await res.json();
-        const row   = data.find(d => d.SecuritiesCompanyCode === symbol);
-        const price = row ? parsePrice(row.Close) : null;
-        if (price) {
-          holding.currentPrice = price;
-          holding.currency     = 'TWD';
-          const change = parseFloat((row.Change || '').replace(/,/g, '') || '0');
-          if (!isNaN(change)) {
-            const prev = price - change;
-            if (prev > 0) holding.previousClose = prev;
-          }
-          return;
-        }
-      }
-    } catch {}
+  // 最後備援：Yahoo Finance（適用 OTC 股票週末/盤後）
+  const prevPrice = holding.currentPrice;
+  holding.currentPrice = null;
+  const suffix = knownMarket === 'otc' ? '.TWO' : '.TW';
+  await fetchViaYahoo(symbol + suffix, holding, 'TWD');
+  if (holding.currentPrice) return;
+
+  if (!knownMarket) {
+    await fetchViaYahoo(symbol + '.TWO', holding, 'TWD');
+    if (holding.currentPrice) { twMarketCache[symbol] = 'otc'; return; }
   }
+
+  holding.currentPrice = prevPrice;
 }
 
 // 美股抓取
@@ -1751,47 +1300,26 @@ async function fetchUSStocksBatch(usHoldings) {
   }
 }
 
-// Yahoo Finance chart API
+// Yahoo Finance via CF Worker（美股 / OTC 台股備援）
 async function fetchViaYahoo(symbol, holding, currency) {
-  if (/^\d/.test(symbol) && !symbol.endsWith('.TW') && !symbol.endsWith('.TWO')) symbol = symbol + '.TW';
-  const encoded   = encodeURIComponent(symbol);
-  const yahooUrl  = `https://query1.finance.yahoo.com/v8/finance/chart/${encoded}?interval=1d&range=1d`;
-  const isTW = symbol.endsWith('.TW') || symbol.endsWith('.TWO');
-
-  // 所有股票優先走 CF Worker（server-side，無 CORS / cookie 問題）
-  const urls = [];
-  urls.push(`${CF_WORKER_URL}/?symbol=${encoded}&market=us`);
-  if (IS_GITHUB_PAGES) {
-    urls.push(`https://corsproxy.io/?url=${encodeURIComponent(yahooUrl)}`);
-    urls.push(`https://api.allorigins.win/raw?url=${encodeURIComponent(yahooUrl)}`);
-  } else {
-    urls.push(yahooUrl, `https://query2.finance.yahoo.com/v8/finance/chart/${encoded}?interval=1d&range=1d`);
-  }
-
-  for (const url of urls) {
-    try {
-      let res = await fetch(url);
-      // 502 通常是 Yahoo Finance 限速，等 1 秒後重試一次
-      if (res.status === 502) {
-        await new Promise(r => setTimeout(r, 1000));
-        res = await fetch(url);
-      }
-      if (!res.ok) continue;
-      const text = await res.text();
-      let data;
-      try { const w = JSON.parse(text); data = w.contents ? JSON.parse(w.contents) : w; }
-      catch { continue; }
-      const meta  = data?.chart?.result?.[0]?.meta;
-      const price = meta?.regularMarketPrice ?? meta?.chartPreviousClose;
-      if (price) {
-        holding.currentPrice = price;
-        holding.currency     = currency;
-        const prev = meta?.chartPreviousClose ?? meta?.previousClose;
-        if (prev) holding.previousClose = prev;
-        return;
-      }
-    } catch {}
-  }
+  const encoded = encodeURIComponent(symbol);
+  try {
+    let res = await fetch(`${CF_WORKER_URL}/?symbol=${encoded}&market=us`);
+    if (res.status === 502) {
+      await new Promise(r => setTimeout(r, 1000));
+      res = await fetch(`${CF_WORKER_URL}/?symbol=${encoded}&market=us`);
+    }
+    if (!res.ok) return;
+    const data  = await res.json();
+    const meta  = data?.chart?.result?.[0]?.meta;
+    const price = meta?.regularMarketPrice ?? meta?.chartPreviousClose;
+    if (price) {
+      holding.currentPrice = price;
+      holding.currency     = currency;
+      const prev = meta?.chartPreviousClose ?? meta?.previousClose;
+      if (prev) holding.previousClose = prev;
+    }
+  } catch {}
 }
 
 // ─── 技術指標（MA20/MA60/乖離率）────────────────────────────────────────────
@@ -1802,7 +1330,7 @@ function calcMA(closes, period) {
 }
 
 async function fetchHistoryViaYahoo(symbol) {
-  const CACHE_TTL = 6 * 60 * 60 * 1000; // 6小時
+  const CACHE_TTL = 6 * 60 * 60 * 1000;
   const cacheKey  = `hist_${symbol}`;
   try {
     const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
@@ -1811,34 +1339,18 @@ async function fetchHistoryViaYahoo(symbol) {
     }
   } catch {}
 
-  const encoded  = encodeURIComponent(symbol);
-  const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encoded}?interval=1d&range=4mo`;
-  const urls = [
-    `${CF_WORKER_URL}/?symbol=${encoded}&market=us&range=4mo`,
-    ...(IS_GITHUB_PAGES
-      ? [
-          `https://corsproxy.io/?url=${encodeURIComponent(yahooUrl)}`,
-          `https://api.allorigins.win/raw?url=${encodeURIComponent(yahooUrl)}`,
-        ]
-      : [yahooUrl]
-    ),
-  ];
-  for (const url of urls) {
-    try {
-      const res = await fetch(url);
-      if (!res.ok) continue;
-      const text = await res.text();
-      let data;
-      try { const w = JSON.parse(text); data = w.contents ? JSON.parse(w.contents) : w; }
-      catch { continue; }
-      const closes = data?.chart?.result?.[0]?.indicators?.quote?.[0]?.close;
-      if (closes?.length) {
-        const filtered = closes.filter(v => v != null);
-        try { localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), closes: filtered })); } catch {}
-        return filtered;
-      }
-    } catch {}
-  }
+  try {
+    const encoded = encodeURIComponent(symbol);
+    const res = await fetch(`${CF_WORKER_URL}/?symbol=${encoded}&market=us&range=4mo`);
+    if (!res.ok) return null;
+    const data   = await res.json();
+    const closes = data?.chart?.result?.[0]?.indicators?.quote?.[0]?.close;
+    if (closes?.length) {
+      const filtered = closes.filter(v => v != null);
+      try { localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), closes: filtered })); } catch {}
+      return filtered;
+    }
+  } catch {}
   return null;
 }
 
@@ -1849,7 +1361,7 @@ async function fetchTechnicalsForHolding(h) {
 
   let symbol = h.symbol;
   if (fetchCat === 'tw_stock') {
-    symbol = symbol + (yahooSuffixCache[symbol] || '.TW');
+    symbol = symbol + (twMarketCache[symbol] === 'otc' ? '.TWO' : '.TW');
   }
 
   const closes = await fetchHistoryViaYahoo(symbol);

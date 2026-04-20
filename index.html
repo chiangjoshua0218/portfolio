@@ -18,7 +18,7 @@
       <div class="header-title">
         <h1>📊 資產總覽</h1>
         <div class="version-info">
-          <span class="version-tag">v3.0.9</span>
+          <span class="version-tag">v3.1.0</span>
           <span class="author-tag">by joshchiang0218</span>
         </div>
       </div>
@@ -134,81 +134,6 @@
       <div class="modal-actions">
         <button class="btn btn-secondary" onclick="histModalAddManual()">手動新增</button>
         <button class="btn btn-secondary" onclick="closeHistModal()">取消</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- DCA Modal -->
-  <div id="dca-modal" class="modal" style="display:none">
-    <div class="modal-content">
-      <h3 id="dca-modal-title">新增定期計畫</h3>
-      <input type="hidden" id="dca-modal-pid" />
-      <input type="hidden" id="dca-edit-id" />
-      <div class="form-group">
-        <label>計畫類型</label>
-        <select id="dca-plan-type" onchange="onDcaPlanTypeChange()">
-          <option value="invest">定期投資（買股票/ETF）</option>
-          <option value="debt_payment">定期還款（償還負債）</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label>計畫名稱（選填）</label>
-        <input type="text" id="dca-name" placeholder="例：每月買 VTI" />
-      </div>
-      <div class="form-group">
-        <label>每月幾號執行（1–28）</label>
-        <input type="number" id="dca-day" value="5" min="1" max="28" />
-      </div>
-      <div class="form-group">
-        <label>扣款金額</label>
-        <input type="number" id="dca-amount" placeholder="2000" min="0" step="any" />
-      </div>
-      <div class="form-group">
-        <label>扣款幣別（對應現金持股）</label>
-        <select id="dca-currency" onchange="onDcaCurrencyChange()">
-          <option value="TWD">TWD 新台幣</option>
-          <option value="USD">USD 美元</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label>現金來源 <span class="hint">（對應扣款幣別）</span></label>
-        <select id="dca-cash-id">
-          <!-- populated by JS -->
-        </select>
-      </div>
-      <div id="dca-invest-fields">
-        <div class="form-group">
-          <label>目標股票代號</label>
-          <input type="text" id="dca-symbol" placeholder="例：VTI、0050" />
-        </div>
-        <div class="form-group">
-          <label>目標分類</label>
-          <select id="dca-category">
-            <option value="us_stock">美股</option>
-            <option value="tw_stock">台股</option>
-            <option value="bond">債券</option>
-            <option value="crypto">加密貨幣</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label>目標持股 <span class="hint">（選填，留空自動對應第一筆或新增）</span></label>
-          <select id="dca-target-holding-id">
-            <option value="">自動（第一筆相符或新增）</option>
-          </select>
-          <button type="button" class="btn btn-secondary" onclick="refreshDcaTargetHoldings()" style="margin-top:6px;font-size:0.78rem;padding:4px 10px">查詢已有持股</button>
-        </div>
-      </div>
-      <div id="dca-debt-fields" style="display:none">
-        <div class="form-group">
-          <label>目標負債</label>
-          <select id="dca-debt-id">
-            <!-- populated by JS -->
-          </select>
-        </div>
-      </div>
-      <div class="modal-actions">
-        <button class="btn btn-primary" onclick="saveDcaPlan()">儲存</button>
-        <button class="btn btn-secondary" onclick="closeDcaModal()">取消</button>
       </div>
     </div>
   </div>
@@ -341,6 +266,6 @@
     <button class="btn btn-primary" onclick="onRequestPermission()">授權讀取</button>
   </div>
 
-  <script src="app.js?v=3.0.9"></script>
+  <script src="app.js?v=3.1.0"></script>
 </body>
 </html>
