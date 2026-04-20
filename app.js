@@ -1,4 +1,4 @@
-const VERSION = '3.0.8';
+const VERSION = '3.0.9';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -133,6 +133,11 @@ async function init() {
   }
 
   fetchExchangeRate(); // 背景自動抓取最新匯率
+
+  // 盤中每 90 秒自動更新股價
+  setInterval(() => {
+    if (isTWTradingHours()) refreshAllPrices();
+  }, 90 * 1000);
 }
 
 function applyConfig(config) {
