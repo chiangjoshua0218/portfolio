@@ -18,17 +18,15 @@
       <div class="header-title">
         <h1>📊 資產總覽</h1>
         <div class="version-info">
-          <span class="version-tag">v3.1.0</span>
+          <span class="version-tag">v3.1.1</span>
           <span class="author-tag">by joshchiang0218</span>
         </div>
       </div>
       <div class="header-actions">
         <span id="last-updated" class="last-updated">尚未更新</span>
         <span id="usd-rate-tag" class="rate-tag" onclick="fetchExchangeRate()" title="點擊重新抓取匯率">1 USD = -- TWD</span>
-        <label class="btn btn-secondary" title="載入 portfolio.json">
-          ↑ 匯入設定
-          <input type="file" id="import-file" accept=".json" style="display:none" onchange="importConfig(event)" />
-        </label>
+        <button class="btn btn-secondary" onclick="onImportConfig()">↑ 匯入設定</button>
+        <input type="file" id="import-file" accept=".json" style="display:none" onchange="importConfig(event)" />
         <button class="btn btn-secondary" onclick="exportConfig()">↓ 匯出設定</button>
       </div>
     </header>
@@ -266,6 +264,6 @@
     <button class="btn btn-primary" onclick="onRequestPermission()">授權讀取</button>
   </div>
 
-  <script src="app.js?v=3.1.0"></script>
+  <script src="app.js?v=3.1.1"></script>
 </body>
 </html>
