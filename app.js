@@ -1,4 +1,4 @@
-const VERSION = '3.0.7';
+const VERSION = '3.0.8';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -1656,7 +1656,8 @@ async function fetchTWStockPrice(holding) {
         if (!res.ok) continue;
         const data  = await res.json();
         const item  = data?.msgArray?.[0];
-        const price = parsePrice(item?.z);
+        // z='-' 表示當下兩筆成交之間，改用開盤價 o 作為替代
+        const price = parsePrice(item?.z) || parsePrice(item?.o);
         const prev  = parsePrice(item?.y);
         if (price) {
           holding.currentPrice  = price;
