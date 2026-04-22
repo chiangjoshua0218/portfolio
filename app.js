@@ -1,4 +1,4 @@
-const VERSION = '3.1.2';
+const VERSION = '3.2.0';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -138,6 +138,12 @@ async function init() {
   setInterval(() => {
     if (isTWMisAvailable()) refreshAllPrices();
   }, 90 * 1000);
+
+  // 手機：點擊持股項目展開損益 / 月線細節
+  document.addEventListener('click', e => {
+    const item = e.target.closest('.hblock-item[data-expandable]:not(.hblock-item-edit)');
+    if (item) item.classList.toggle('expanded');
+  });
 }
 
 function applyConfig(config) {
@@ -1135,7 +1141,8 @@ function renderHoldings(pid) {
       const displayValue = cat === 'debt'
         ? `<span style="color:#f87171">${formatTWD(valueTWD)}</span>` // 負值（如 -500,000）
         : noPrice ? '<span style="color:#475569;font-size:0.72rem">尚無價格</span>' : formatTWD(valueTWD);
-      return `<div class="hblock-item">
+      const hasDetail = !!(pnlHtml || maHtml);
+      return `<div class="hblock-item"${hasDetail ? ' data-expandable' : ''}>
         <div class="hblock-name">${escHtml(h.name)}${h.symbol && h.symbol !== h.name ? `<div class="holding-symbol">${escHtml(h.symbol)}</div>` : ''}</div>
         <div class="hblock-value">${displayValue}</div>
         ${priceDetailHtml}
