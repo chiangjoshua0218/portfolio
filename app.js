@@ -1,4 +1,4 @@
-const VERSION = '3.2.1';
+const VERSION = '3.2.2';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -1584,7 +1584,8 @@ function renderTargetCards(pid) {
     ? `<div class="tcard-sum${tSum === 100 ? ' perfect' : tSum > 100 ? ' over' : ''}" id="target-sum-bar-${pid}">合計：<span id="target-sum-${pid}">${tSum}</span>%</div>`
     : '';
 
-  container.innerHTML = `<div class="tcard-grid">${cards}</div>${sumHtml}`;
+  const mobileHeader = `<div class="tcard-table-header"><span>類別</span><span>目標</span><span>目前</span><span>調整</span></div>`;
+  container.innerHTML = `${mobileHeader}<div class="tcard-grid">${cards}</div>${sumHtml}`;
 }
 
 function toggleTargetEdit(pid) {
