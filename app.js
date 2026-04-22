@@ -1,4 +1,4 @@
-const VERSION = '3.2.2';
+const VERSION = '3.2.3';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────

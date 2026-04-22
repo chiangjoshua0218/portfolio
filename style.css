@@ -1034,24 +1034,33 @@ header h1 {
   .card { padding: 12px 10px; }
   .card-header { flex-wrap: wrap; gap: 6px; }
 
-  /* ── 資產總覽：水平捲動 ── */
+  /* ── 資產總覽：條列式 ── */
   .summary-cards {
     display: flex;
-    flex-direction: row;
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    scroll-snap-type: x mandatory;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-    gap: 8px;
-    padding-bottom: 4px;
+    flex-direction: column;
+    gap: 0;
     margin-bottom: 16px;
+    background: #1e293b;
+    border-radius: 10px;
+    overflow: hidden;
+    padding: 0;
   }
-  .summary-cards::-webkit-scrollbar { display: none; }
-  .summary-card { flex-shrink: 0; scroll-snap-align: start; min-width: 110px; padding: 12px 10px; }
-  #total-value { font-size: 1.05rem; }
-  .card-value { font-size: 0.88rem; }
-  .summary-change { font-size: 0.68rem; }
+  .summary-card {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    padding: 10px 14px;
+    border-bottom: 1px solid #334155;
+    text-align: left;
+    background: transparent;
+    box-shadow: none;
+    border-radius: 0;
+  }
+  .summary-card:last-child { border-bottom: none; }
+  .summary-card .card-label { flex: 0 0 5rem; font-size: 0.8rem; color: #94a3b8; margin-bottom: 0; }
+  .summary-card .card-value { flex: 1; font-size: 0.95rem; font-weight: 600; color: #f1f5f9; }
+  .summary-card .summary-change { font-size: 0.82rem; margin-top: 0; text-align: right; }
+  #total-value { font-size: 1.05rem !important; color: #38bdf8 !important; }
 
   /* ── 目標配置：表格排版（一行四欄）── */
   .tcard-table-header {
