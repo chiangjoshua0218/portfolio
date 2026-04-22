@@ -1,4 +1,4 @@
-const VERSION = '3.2.0';
+const VERSION = '3.2.1';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -36,6 +36,7 @@ let holdingsSortBy        = {}; // { [profileId]: 'none'|'value' }
 let holdingsEditMode      = {}; // { [profileId]: boolean }
 let isRefreshing          = false;
 const twMarketCache       = {}; // { [symbol]: 'tse'|'otc' } 快取已知市場
+const hblockExpandedCats  = new Set(); // 手機版已展開的類別，格式 'pid_cat'
 let fileHandle            = null;
 const FILE_API_SUPPORTED = 'showOpenFilePicker' in window;
 
@@ -139,8 +140,21 @@ async function init() {
     if (isTWMisAvailable()) refreshAllPrices();
   }, 90 * 1000);
 
-  // 手機：點擊持股項目展開損益 / 月線細節
+  // 手機：點擊類別 header 展開/收合，點擊個股展開細節
   document.addEventListener('click', e => {
+    const hdr = e.target.closest('.hblock-header');
+    if (hdr) {
+      const block = hdr.closest('.hblock');
+      if (!block) return;
+      const list = block.closest('[id^="holdings-list-"]');
+      const pid  = list?.id.replace('holdings-list-', '') || '';
+      const cat  = block.dataset.cat || '';
+      block.classList.toggle('expanded');
+      const key = `${pid}_${cat}`;
+      if (block.classList.contains('expanded')) hblockExpandedCats.add(key);
+      else hblockExpandedCats.delete(key);
+      return;
+    }
     const item = e.target.closest('.hblock-item[data-expandable]:not(.hblock-item-edit)');
     if (item) item.classList.toggle('expanded');
   });
@@ -1109,7 +1123,7 @@ function renderHoldings(pid) {
         const priceStr = h.currency === 'USD'
           ? `$${h.currentPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`
           : `NT$${h.currentPrice.toLocaleString('zh-TW')}`;
-        priceDetailHtml = `<div style="font-size:0.7rem;color:#64748b">${priceStr} × ${h.qty.toLocaleString()}</div>`;
+        priceDetailHtml = `<div class="hblock-price-detail">${priceStr} × ${h.qty.toLocaleString()}</div>`;
       }
       // 損益
       let pnlHtml = '';
@@ -1152,7 +1166,7 @@ function renderHoldings(pid) {
       </div>`;
     }).join('');
 
-    return `<div class="hblock">
+    return `<div class="hblock" data-cat="${cat}">
       <div class="hblock-header">
         <span class="holding-badge badge-${cat}">${CATEGORY_LABELS[cat]}</span>
         ${catTotal > 0 ? `<span class="hblock-total">${formatTWD(catTotal)}</span>` : cat === 'debt' && catTotal < 0 ? `<span class="hblock-total" style="color:#f87171">${formatTWD(catTotal)}</span>` : ''}
@@ -1161,6 +1175,14 @@ function renderHoldings(pid) {
       ${holdings.length === 0 ? '<div class="hblock-empty">—</div>' : `<div class="hblock-items">${items}</div>`}
     </div>`;
   }).join('')}</div>`;
+
+  // 手機：還原已展開的類別
+  hblockExpandedCats.forEach(key => {
+    if (!key.startsWith(pid + '_')) return;
+    const cat = key.slice(pid.length + 1);
+    const block = container.querySelector(`.hblock[data-cat="${cat}"]`);
+    if (block) block.classList.add('expanded');
+  });
 }
 
 // ─── 價格抓取 ────────────────────────────────────────────────────────────────

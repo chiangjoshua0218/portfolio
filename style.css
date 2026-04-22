@@ -616,6 +616,11 @@ header h1 {
   margin-top: 3px;
   line-height: 1.5;
 }
+.hblock-price-detail {
+  font-size: 0.7rem;
+  color: #64748b;
+  margin-top: 2px;
+}
 .hblock-cat-pnl {
   font-size: 0.75rem;
   font-weight: 500;
@@ -1013,121 +1018,150 @@ header h1 {
 
 /* ── 手機版 (max-width: 640px) ──────────────────────────────────────────── */
 @media (max-width: 640px) {
-  .container {
-    padding: 10px 10px;
-  }
+  .container { padding: 10px; }
 
-  /* Header 改直排 */
+  /* ── Header：兩行排版 ── */
   header {
     flex-direction: column;
-    align-items: flex-start;
-    gap: 8px;
-    margin-bottom: 14px;
+    align-items: stretch;
+    gap: 6px;
+    margin-bottom: 12px;
   }
-  header h1 {
-    font-size: 1.3rem;
-  }
-  .author-tag {
-    display: none;
-  }
+  header h1 { font-size: 1.25rem; }
+  .author-tag { display: none; }
+
+  /* 第一行：匯率 + 最後更新時間 */
+  /* 第二行：匯入 / 匯出按鈕 */
   .header-actions {
-    width: 100%;
+    display: flex;
     flex-wrap: wrap;
+    align-items: center;
     gap: 6px;
   }
+  #usd-rate-tag  { order: 1; }
+  .last-updated  { order: 2; flex: 1; text-align: right; }
   .header-actions .btn {
+    order: 3;
     font-size: 0.78rem;
     padding: 6px 10px;
-  }
-  .last-updated {
-    width: 100%;
-    order: 10;
+    flex: 1;
+    justify-content: center;
   }
 
-  /* Cards */
-  .card {
-    padding: 12px 10px;
-    border-radius: 10px;
-  }
-  .card-header {
-    flex-wrap: wrap;
-    gap: 6px;
-  }
+  /* ── Cards ── */
+  .card { padding: 12px 10px; }
+  .card-header { flex-wrap: wrap; gap: 6px; }
 
-  /* Summary cards */
-  .summary-card {
-    padding: 10px 6px;
-  }
-  .card-value {
-    font-size: 0.9rem;
-  }
-  #total-value {
-    font-size: 1.1rem;
-  }
-  .summary-change {
-    font-size: 0.7rem;
-  }
+  /* ── Summary cards ── */
+  .summary-card { padding: 10px 6px; }
+  .card-value { font-size: 0.9rem; }
+  #total-value { font-size: 1.1rem; }
+  .summary-change { font-size: 0.68rem; }
 
-  /* Holdings grid：2 欄 */
+  /* ── Holdings：單欄，類別可收合 ── */
   .holdings-grid {
-    flex-wrap: wrap;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    gap: 0;
   }
   .hblock {
-    flex-basis: calc(50% - 4px);
-    min-width: calc(50% - 4px);
+    flex: none;
+    width: 100%;
+    min-width: 0;
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+    border-top: none;
+    padding: 0 2px;
+    background: transparent;
   }
+  .hblock:first-child { border-top: 1px solid #2d3748; }
 
-  /* 持股細節：預設隱藏損益、月線，點擊展開 */
-  .hblock-item {
+  /* 類別 header：橫排 + 展開箭頭 */
+  .hblock-header {
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 4px;
+    margin-bottom: 0;
+    border-bottom: 1px solid #2d3748;
     cursor: pointer;
     user-select: none;
   }
-  .hblock-pnl,
-  .hblock-ma {
-    display: none;
+  .hblock-header .hblock-total { margin-left: auto; }
+  .hblock-header .hblock-cat-pnl { font-size: 0.7rem; }
+  .hblock-header::after {
+    content: '›';
+    font-size: 1.2rem;
+    line-height: 1;
+    color: #475569;
+    flex-shrink: 0;
+    transition: transform 0.2s;
   }
-  .hblock-item.expanded .hblock-pnl,
-  .hblock-item.expanded .hblock-ma {
+  .hblock.expanded > .hblock-header::after { transform: rotate(90deg); }
+
+  /* 類別內容：預設隱藏，展開顯示 */
+  .hblock-items, .hblock-empty { display: none; }
+  .hblock.expanded > .hblock-items {
+    display: flex;
+    padding: 4px 4px 10px;
+  }
+  .hblock.expanded > .hblock-empty {
     display: block;
-  }
-  /* 可展開項目右側顯示小指示點 */
-  .hblock-item[data-expandable]::after {
-    content: '…';
-    display: block;
-    font-size: 0.6rem;
-    color: #334155;
-    text-align: right;
-    margin-top: 1px;
-  }
-  .hblock-item[data-expandable].expanded::after {
-    content: '▲';
+    padding: 8px 4px;
   }
 
-  /* Modal 全寬 */
+  /* 個股行：name + value 同一行，細節換行 */
+  .hblock-item {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0 8px;
+    padding: 6px 0;
+    cursor: pointer;
+    user-select: none;
+  }
+  .hblock-item .hblock-name {
+    flex: 1;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .hblock-item .hblock-value { flex-shrink: 0; margin-top: 0; }
+  .hblock-item .hblock-price-detail,
+  .hblock-item .hblock-change  { flex-basis: 100%; }
+
+  /* 損益 / 月線：預設隱藏，展開顯示 */
+  .hblock-pnl, .hblock-ma { display: none; }
+  .hblock-item.expanded .hblock-pnl,
+  .hblock-item.expanded .hblock-ma { display: block; flex-basis: 100%; }
+
+  /* 有細節的項目顯示可展開指示 */
+  .hblock-item[data-expandable] .hblock-value::after {
+    content: ' ›';
+    font-size: 0.6rem;
+    color: #334155;
+  }
+  .hblock-item[data-expandable].expanded .hblock-value::after {
+    content: ' ▾';
+    color: #64748b;
+  }
+
+  /* ── Modal 全寬 ── */
   .modal-content {
     width: calc(100vw - 20px);
     padding: 16px;
     max-height: 88vh;
   }
 
-  /* Tab */
-  .tab {
-    padding: 8px 12px;
-    font-size: 0.8rem;
-  }
+  /* ── Tabs ── */
+  .tab { padding: 8px 12px; font-size: 0.8rem; }
 
-  /* 目標配置欄位 */
-  .tcard-grid {
-    grid-template-columns: repeat(2, 1fr) !important;
-  }
+  /* ── 目標配置 ── */
+  .tcard-grid { grid-template-columns: repeat(2, 1fr) !important; }
 
-  /* Per-profile breakdown */
-  .pbd-row {
-    flex-direction: column;
-    gap: 8px;
-    padding: 10px 12px;
-  }
-  .pbd-total {
-    min-width: unset;
-  }
+  /* ── 各人資產明細 ── */
+  .pbd-row { flex-direction: column; gap: 8px; padding: 10px 12px; }
+  .pbd-total { min-width: unset; }
 }
