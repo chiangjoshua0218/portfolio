@@ -1,4 +1,4 @@
-const VERSION = '3.3.3';
+const VERSION = '3.3.4';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -156,7 +156,8 @@ async function init() {
   renderAll();
   refreshAllPrices();
 
-  fetchExchangeRate(); // 背景自動抓取最新匯率
+  // 有 Gist 時用 Gist 存的匯率；否則自動抓一次
+  if (!gistConfigured()) fetchExchangeRate();
 
   // 離開頁面前確保 Gist 已儲存（keepalive 讓 fetch 在頁面卸載後仍能完成）
   window.addEventListener('beforeunload', () => {
