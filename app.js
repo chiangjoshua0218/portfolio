@@ -1,4 +1,4 @@
-const VERSION = '3.3.2';
+const VERSION = '3.3.3';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -157,6 +157,19 @@ async function init() {
   refreshAllPrices();
 
   fetchExchangeRate(); // 背景自動抓取最新匯率
+
+  // 離開頁面前確保 Gist 已儲存（keepalive 讓 fetch 在頁面卸載後仍能完成）
+  window.addEventListener('beforeunload', () => {
+    if (!gistToken || !gistId || gistSaveTimer === null) return;
+    clearTimeout(gistSaveTimer);
+    gistSaveTimer = null;
+    const config = { version: 2, usdRate, historicalRecords, profiles };
+    fetch(`https://api.github.com/gists/${gistId}`, {
+      method: 'PATCH', keepalive: true,
+      headers: { Authorization: `Bearer ${gistToken}`, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ files: { [GIST_FILE]: { content: JSON.stringify(config, null, 2) } } }),
+    });
+  });
 
   // 盤中每 90 秒自動更新股價
   setInterval(() => {
@@ -335,7 +348,7 @@ function saveData() {
   }
   if (gistToken) {
     clearTimeout(gistSaveTimer);
-    gistSaveTimer = setTimeout(() => saveToGist(config), 2000);
+    gistSaveTimer = setTimeout(() => saveToGist(config), 0);
   }
 }
 
