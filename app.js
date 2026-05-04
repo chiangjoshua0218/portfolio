@@ -1,4 +1,4 @@
-const VERSION = '3.3.1';
+const VERSION = '3.3.2';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -357,7 +357,7 @@ async function loadFromGist() {
       if (found) { id = found.id; gistId = id; localStorage.setItem('gist_id', id); }
     }
     if (!id) return false;
-    const res = await fetch(`https://api.github.com/gists/${id}`, { headers, cache: 'no-cache' });
+    const res = await fetch(`https://api.github.com/gists/${id}?_=${Date.now()}`, { headers, cache: 'no-cache' });
     if (!res.ok) return false;
     const data = await res.json();
     const content = data.files?.[GIST_FILE]?.content;
