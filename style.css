@@ -404,6 +404,24 @@ header h1 {
 }
 
 .btn-danger {
+  background: #7f1d1d;
+  color: #fca5a5;
+  border: 1px solid #991b1b;
+}
+.btn-danger:hover { background: #991b1b; }
+
+.btn-link {
+  background: none;
+  border: none;
+  color: #38bdf8;
+  font-size: 0.78rem;
+  cursor: pointer;
+  padding: 0 4px;
+  text-decoration: underline;
+}
+.btn-link:hover { color: #7dd3fc; }
+
+.btn-danger {
   background: transparent;
   color: #f87171;
   border: 1px solid #f87171;

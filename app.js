@@ -1,4 +1,4 @@
-const VERSION = '3.2.3';
+const VERSION = '3.3.0';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -38,7 +38,12 @@ let isRefreshing          = false;
 const twMarketCache       = {}; // { [symbol]: 'tse'|'otc' } 快取已知市場
 const hblockExpandedCats  = new Set(); // 手機版已展開的類別，格式 'pid_cat'
 let fileHandle            = null;
+let filePath              = null; // 顯示用完整路徑（儘可能取得）
 const FILE_API_SUPPORTED = 'showOpenFilePicker' in window;
+let gistToken      = localStorage.getItem('gist_token') || '';
+let gistId         = localStorage.getItem('gist_id')    || '';
+let gistSaveTimer  = null;
+const GIST_FILE    = 'portfolio.json';
 
 // ─── Profile helpers ──────────────────────────────────────────────────────────
 function getProfile(id) {
@@ -78,6 +83,26 @@ async function dbSet(key, value) {
 }
 
 // ─── File System Access ───────────────────────────────────────────────────────
+async function captureFilePath(handle) {
+  try {
+    // 非標準屬性，部分 Chromium 環境支援
+    const file = await handle.getFile();
+    if (file.path) { filePath = file.path; await dbSet('filePath', filePath); return; }
+  } catch {}
+  // 嘗試讓使用者選取同一資料夾來組出路徑
+  try {
+    const dir = await window.showDirectoryPicker({ startIn: handle, mode: 'read' });
+    const rel = await dir.resolve(handle);
+    if (rel) filePath = dir.name + '/' + rel.join('/');
+    else     filePath = dir.name + '/' + handle.name;
+    await dbSet('filePath', filePath);
+  } catch {
+    // 使用者取消或不支援，就只顯示檔名
+    filePath = null;
+    await dbSet('filePath', null);
+  }
+}
+
 async function readConfigFile(handle) {
   const file = await handle.getFile();
   const text = await file.text();
@@ -108,30 +133,28 @@ async function initFileSystem() {
 async function init() {
   const fsStatus = await initFileSystem();
 
-  if (fsStatus === 'ready') {
+  if (gistConfigured()) {
+    const loaded = await loadFromGist();
+    if (!loaded) loadFromLocalStorage();
+  } else if (fsStatus === 'ready') {
     try {
       applyConfig(await readConfigFile(fileHandle));
     } catch (e) {
       loadFromLocalStorage();
       console.warn('讀取設定檔失敗，使用 localStorage:', e);
     }
-    renderAll();
-    refreshAllPrices();
   } else if (fsStatus === 'needs-permission') {
     loadFromLocalStorage();
     showPermissionBanner();
-    renderAll();
-    refreshAllPrices();
   } else if (fsStatus === 'no-file') {
     loadFromLocalStorage();
     showSetupModal();
-    renderAll();
-    refreshAllPrices();
   } else {
     loadFromLocalStorage();
-    renderAll();
-    refreshAllPrices();
   }
+
+  renderAll();
+  refreshAllPrices();
 
   fetchExchangeRate(); // 背景自動抓取最新匯率
 
@@ -203,10 +226,14 @@ function updateRateDisplay() {
 }
 
 function storageInfoHTML() {
-  if (fileHandle) {
-    return `<div class="storage-info">💾 資料來源：本機檔案 <strong>${escHtml(fileHandle.name)}</strong></div>`;
+  if (gistToken) {
+    const idStr = gistId ? `<span style="color:#64748b;font-size:0.75rem"> · ${gistId.slice(0,8)}…</span>` : '';
+    return `<div class="storage-info">☁️ 資料來源：GitHub Gist${idStr} <button class="btn-link" onclick="openGistModal()">設定</button></div>`;
   }
-  return `<div class="storage-info">💾 資料來源：瀏覽器 localStorage（重灌或換瀏覽器會遺失）</div>`;
+  if (fileHandle) {
+    return `<div class="storage-info">💾 資料來源：本機檔案 <strong>${escHtml(fileHandle.name)}</strong> <button class="btn-link" onclick="openGistModal()">改用 Gist 同步</button></div>`;
+  }
+  return `<div class="storage-info">💾 資料來源：瀏覽器 localStorage <button class="btn-link" onclick="openGistModal()">設定 Gist 同步</button></div>`;
 }
 
 function updateStorageInfo() {
@@ -306,8 +333,94 @@ function saveData() {
   if (fileHandle) {
     writeConfigFile(fileHandle, config).catch(e => console.warn('寫入設定檔失敗:', e));
   }
+  if (gistToken) {
+    clearTimeout(gistSaveTimer);
+    gistSaveTimer = setTimeout(() => saveToGist(config), 2000);
+  }
 }
 
+
+// ─── GitHub Gist 同步 ─────────────────────────────────────────────────────────
+function gistConfigured() { return !!gistToken; }
+
+async function loadFromGist() {
+  if (!gistToken) return false;
+  const headers = { Authorization: `Bearer ${gistToken}`, Accept: 'application/vnd.github+json' };
+  try {
+    let id = gistId;
+    if (!id) {
+      // 嘗試搜尋已有的 portfolio gist
+      const res = await fetch('https://api.github.com/gists', { headers });
+      if (!res.ok) return false;
+      const list = await res.json();
+      const found = list.find(g => g.files?.[GIST_FILE]);
+      if (found) { id = found.id; gistId = id; localStorage.setItem('gist_id', id); }
+    }
+    if (!id) return false;
+    const res = await fetch(`https://api.github.com/gists/${id}`, { headers });
+    if (!res.ok) return false;
+    const data = await res.json();
+    const content = data.files?.[GIST_FILE]?.content;
+    if (content) { applyConfig(JSON.parse(content)); return true; }
+    return false;
+  } catch (e) { console.warn('Gist 讀取失敗:', e); return false; }
+}
+
+async function saveToGist(config) {
+  if (!gistToken) return;
+  const headers = {
+    Authorization: `Bearer ${gistToken}`,
+    Accept: 'application/vnd.github+json',
+    'Content-Type': 'application/json',
+  };
+  const body = { files: { [GIST_FILE]: { content: JSON.stringify(config, null, 2) } } };
+  try {
+    if (gistId) {
+      await fetch(`https://api.github.com/gists/${gistId}`, { method: 'PATCH', headers, body: JSON.stringify(body) });
+    } else {
+      const res = await fetch('https://api.github.com/gists', {
+        method: 'POST', headers,
+        body: JSON.stringify({ ...body, description: '資產總覽設定檔', public: false }),
+      });
+      if (res.ok) { const d = await res.json(); gistId = d.id; localStorage.setItem('gist_id', gistId); updateStorageInfo(); }
+    }
+  } catch (e) { console.warn('Gist 寫入失敗:', e); }
+}
+
+function openGistModal() {
+  document.getElementById('gist-token-input').value = gistToken;
+  document.getElementById('gist-id-display').textContent = gistId || '（首次儲存後自動產生）';
+  document.getElementById('gist-modal').style.display = 'flex';
+}
+
+function closeGistModal() { document.getElementById('gist-modal').style.display = 'none'; }
+
+async function saveGistSettings() {
+  const token = document.getElementById('gist-token-input').value.trim();
+  gistToken = token;
+  gistId = '';                         // 清掉舊 ID，讓 loadFromGist 重新搜尋
+  localStorage.setItem('gist_token', token);
+  localStorage.removeItem('gist_id');
+  closeGistModal();
+  updateStorageInfo();
+  if (!token) return;
+  const loaded = await loadFromGist();
+  if (loaded) {
+    renderAll(); refreshAllPrices();
+  } else {
+    // Gist 沒有舊資料，把現有資料推上去
+    await saveToGist({ version: 2, usdRate, historicalRecords, profiles });
+  }
+  updateStorageInfo();
+}
+
+function clearGistSettings() {
+  gistToken = ''; gistId = '';
+  localStorage.removeItem('gist_token');
+  localStorage.removeItem('gist_id');
+  closeGistModal();
+  updateStorageInfo();
+}
 
 // ─── 匯出 / 匯入設定檔 ────────────────────────────────────────────────────────
 function exportConfig() {

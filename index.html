@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>資產總覽</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <link rel="stylesheet" href="style.css?v=3.2.3" />
+  <link rel="stylesheet" href="style.css?v=3.3.0" />
 </head>
 <body>
   <!-- Tab bar -->
@@ -18,13 +18,14 @@
       <div class="header-title">
         <h1>📊 資產總覽</h1>
         <div class="version-info">
-          <span class="version-tag">v3.2.3</span>
+          <span class="version-tag">v3.3.0</span>
           <span class="author-tag">by joshchiang0218</span>
         </div>
       </div>
       <div class="header-actions">
         <span id="last-updated" class="last-updated">尚未更新</span>
         <span id="usd-rate-tag" class="rate-tag" onclick="fetchExchangeRate()" title="點擊重新抓取匯率">1 USD = -- TWD</span>
+        <button class="btn btn-secondary" onclick="openGistModal()">☁️ Gist 同步</button>
         <button class="btn btn-secondary" onclick="onImportConfig()">↑ 匯入設定</button>
         <input type="file" id="import-file" accept=".json" style="display:none" onchange="importConfig(event)" />
         <button class="btn btn-secondary" onclick="exportConfig()">↓ 匯出設定</button>
@@ -258,12 +259,33 @@
     </div>
   </div>
 
+  <!-- Gist Settings Modal -->
+  <div id="gist-modal" class="modal" style="display:none">
+    <div class="modal-content">
+      <h3>☁️ GitHub Gist 同步</h3>
+      <p style="color:var(--text-muted);font-size:0.85rem;margin:0 0 1.5rem">設定後，資料會自動同步到 GitHub 私人 Gist，手機、電腦共用同一份資料。</p>
+      <div class="form-group">
+        <label>Personal Access Token <span class="hint">（只需 gist 權限）</span></label>
+        <input type="password" id="gist-token-input" placeholder="ghp_xxxxxxxxxxxx" autocomplete="off" />
+      </div>
+      <div class="form-group">
+        <label>Gist ID</label>
+        <div id="gist-id-display" style="font-size:0.8rem;color:var(--text-muted);padding:6px 0">（首次儲存後自動產生）</div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-primary" onclick="saveGistSettings()">儲存並連線</button>
+        <button class="btn btn-danger" onclick="clearGistSettings()">清除設定</button>
+        <button class="btn btn-secondary" onclick="closeGistModal()">取消</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Permission Banner -->
   <div id="permission-banner" style="display:none" class="permission-banner">
     <span>需要重新授權才能讀取設定檔</span>
     <button class="btn btn-primary" onclick="onRequestPermission()">授權讀取</button>
   </div>
 
-  <script src="app.js?v=3.2.3"></script>
+  <script src="app.js?v=3.3.0"></script>
 </body>
 </html>
