@@ -1,4 +1,4 @@
-const VERSION = '3.3.4';
+const VERSION = '3.3.5';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -896,12 +896,12 @@ function addHolding(e, profileId, formSuffix) {
   const costPrice   = costPriceEl ? (parseFloat(costPriceEl.value) || null) : null;
 
   if (isNaN(qty) || qty < 0) return alert('請輸入有效數量');
-  if (category !== 'cash' && category !== 'debt' && !symbol) return alert('請輸入代號');
+  if (!['cash', 'debt', 'bond'].includes(category) && !symbol) return alert('請輸入代號');
 
   const holding = {
     id:           Date.now().toString(),
     category,
-    symbol:       (category === 'cash' || category === 'debt') ? '' : symbol,
+    symbol:       (category === 'cash' || category === 'debt' || (category === 'bond' && !symbol)) ? '' : symbol,
     name:         name || symbol || CATEGORY_LABELS[category],
     qty,
     currency,
@@ -1160,8 +1160,8 @@ function onCategoryChange(pid) {
     symbolGroup.style.display      = '';
     manualPriceGroup.style.display = '';
     currencyGroup.style.display    = '';
-    qtyLabel.textContent           = '數量（股/張）';
-    symbolHint.textContent         = '（如：00679B、TLT）';
+    qtyLabel.textContent           = '本金金額 / 數量（股/張）';
+    symbolHint.textContent         = '（如：00679B、TLT；直購/定存債請留空）';
   }
 }
 
@@ -1314,6 +1314,7 @@ function renderHoldings(pid) {
 
 // ─── 價格抓取 ────────────────────────────────────────────────────────────────
 function getEffectiveFetchCat(h) {
+  if (h.category === 'bond' && !h.symbol) return null; // 直購債，無代號，不抓報價
   return h.fetchAs || (h.category === 'bond' ? (h.currency === 'TWD' ? 'tw_stock' : 'us_stock') : h.category);
 }
 
@@ -1650,6 +1651,9 @@ function getHoldingValueTWD(h) {
   }
   if (h.category === 'debt') {
     return -toTWD(h.qty, h.currency); // 負債為負值，減少淨資產
+  }
+  if (h.category === 'bond' && !h.symbol) {
+    return toTWD(h.qty, h.currency); // 直購債：qty = 本金金額
   }
   const price = h.currentPrice;
   if (!price) return 0;
