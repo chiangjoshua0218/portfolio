@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>資產總覽</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <link rel="stylesheet" href="style.css?v=3.3.6" />
+  <link rel="stylesheet" href="style.css?v=3.3.8" />
 </head>
 <body>
   <!-- Tab bar -->
@@ -18,7 +18,7 @@
       <div class="header-title">
         <h1>📊 資產總覽</h1>
         <div class="version-info">
-          <span class="version-tag">v3.3.6</span>
+          <span class="version-tag">v3.3.8</span>
           <span class="author-tag">by joshchiang0218</span>
         </div>
       </div>
@@ -188,6 +188,10 @@
           <select id="holding-currency-add">
             <option value="TWD">TWD 新台幣</option>
             <option value="USD">USD 美元</option>
+            <option value="EUR">EUR 歐元</option>
+            <option value="AUD">AUD 澳幣</option>
+            <option value="JPY">JPY 日圓</option>
+            <option value="GBP">GBP 英鎊</option>
           </select>
         </div>
         <div class="modal-actions">
@@ -240,6 +244,17 @@
         <label>名稱</label>
         <input type="text" id="edit-name" />
       </div>
+      <div class="form-group" id="edit-currency-group" style="display:none">
+        <label>幣別</label>
+        <select id="edit-currency">
+          <option value="TWD">TWD 新台幣</option>
+          <option value="USD">USD 美元</option>
+          <option value="EUR">EUR 歐元</option>
+          <option value="AUD">AUD 澳幣</option>
+          <option value="JPY">JPY 日圓</option>
+          <option value="GBP">GBP 英鎊</option>
+        </select>
+      </div>
       <div class="modal-actions">
         <button class="btn btn-primary" onclick="saveEdit()">儲存</button>
         <button class="btn btn-secondary" onclick="closeModal()">取消</button>
@@ -286,6 +301,6 @@
     <button class="btn btn-primary" onclick="onRequestPermission()">授權讀取</button>
   </div>
 
-  <script src="app.js?v=3.3.6"></script>
+  <script src="app.js?v=3.3.8"></script>
 </body>
 </html>

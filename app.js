@@ -1,4 +1,4 @@
-const VERSION = '3.3.6';
+const VERSION = '3.3.8';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -28,6 +28,7 @@ let profiles              = []; // { id, name, holdings, targetAllocations, hist
 let activeProfileId       = 'overview';
 let historicalRecords     = []; // overview 用（所有人合計）
 let usdRate               = 32;
+let fxRates               = {}; // 非 USD 幣別兌台幣匯率，如 { EUR: 35.2, AUD: 21.0, JPY: 0.22, GBP: 41.5 }
 let chart                 = null;
 let historicalChart       = null;
 let profileCharts         = {}; // { [pid]: Chart instance }
@@ -164,7 +165,7 @@ async function init() {
     if (!gistToken || !gistId || gistSaveTimer === null) return;
     clearTimeout(gistSaveTimer);
     gistSaveTimer = null;
-    const config = { version: 2, usdRate, historicalRecords, profiles };
+    const config = { version: 2, usdRate, fxRates, historicalRecords, profiles };
     fetch(`https://api.github.com/gists/${gistId}`, {
       method: 'PATCH', keepalive: true,
       headers: { Authorization: `Bearer ${gistToken}`, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' },
@@ -202,6 +203,7 @@ function applyConfig(config) {
     profiles          = config.profiles || [];
     historicalRecords = config.historicalRecords || [];
     usdRate           = config.usdRate || 32;
+    fxRates           = config.fxRates || {};
   } else {
     // v1 migration: wrap existing data into single profile
     const migratedHistory = (config.historicalRecords || []).map(r => {
@@ -218,6 +220,7 @@ function applyConfig(config) {
     }];
     historicalRecords = migratedHistory;
     usdRate = config.usdRate || 32;
+    fxRates = config.fxRates || {};
   }
   profiles.forEach(p => {
     holdingsSortBy[p.id] = holdingsSortBy[p.id] || 'none';
@@ -265,7 +268,7 @@ async function onCreateNewFile() {
     });
     fileHandle = handle;
     await dbSet('fileHandle', handle);
-    const config = { version: 2, usdRate, historicalRecords, profiles };
+    const config = { version: 2, usdRate, fxRates, historicalRecords, profiles };
     await writeConfigFile(handle, config);
     hideSetupModal();
   } catch (e) {
@@ -342,7 +345,7 @@ function loadFromLocalStorage() {
 }
 
 function saveData() {
-  const config = { version: 2, usdRate, historicalRecords, profiles };
+  const config = { version: 2, usdRate, fxRates, historicalRecords, profiles };
   localStorage.setItem('portfolio_v2', JSON.stringify(config));
   if (fileHandle) {
     writeConfigFile(fileHandle, config).catch(e => console.warn('寫入設定檔失敗:', e));
@@ -423,7 +426,7 @@ async function saveGistSettings() {
     renderAll(); refreshAllPrices();
   } else {
     // Gist 沒有舊資料，把現有資料推上去
-    await saveToGist({ version: 2, usdRate, historicalRecords, profiles });
+    await saveToGist({ version: 2, usdRate, fxRates, historicalRecords, profiles });
   }
   updateStorageInfo();
 }
@@ -438,7 +441,7 @@ function clearGistSettings() {
 
 // ─── 匯出 / 匯入設定檔 ────────────────────────────────────────────────────────
 function exportConfig() {
-  const config = { version: 2, usdRate, historicalRecords, profiles };
+  const config = { version: 2, usdRate, fxRates, historicalRecords, profiles };
   const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -1012,9 +1015,12 @@ function openEdit(holdingId, profileId) {
   document.getElementById('edit-manual-price').value = h.manualPrice || '';
   document.getElementById('edit-cost-price').value   = h.costPrice || '';
   document.getElementById('edit-name').value         = h.name;
+  document.getElementById('edit-currency').value     = h.currency || 'TWD';
 
-  const showManual = h.category !== 'cash';
-  document.getElementById('edit-manual-price-group').style.display = showManual ? '' : 'none';
+  const showManual   = h.category !== 'cash';
+  const showCurrency = h.category === 'bond' || h.category === 'cash' || h.category === 'debt';
+  document.getElementById('edit-manual-price-group').style.display = showManual   ? '' : 'none';
+  document.getElementById('edit-currency-group').style.display     = showCurrency ? '' : 'none';
 
   document.getElementById('edit-modal').style.display = 'flex';
 }
@@ -1108,9 +1114,13 @@ function saveEdit() {
 
   const costPrice   = parseFloat(document.getElementById('edit-cost-price').value) || null;
 
+  const editCurrencyEl = document.getElementById('edit-currency');
+  const currency = editCurrencyEl ? editCurrencyEl.value : (h.currency || 'TWD');
+
   h.category    = category;
   h.fetchAs     = fetchAsVal;
   h.qty         = qty;
+  h.currency    = currency;
   h.costPrice   = costPrice;
   h.name        = name || h.symbol || CATEGORY_LABELS[h.category];
   h.manualPrice = manualPrice;
@@ -1603,23 +1613,46 @@ function getCoinId(symbol) {
   return map[symbol.toUpperCase()] || symbol.toLowerCase().replace(/\s+/g, '-');
 }
 
-// 自動取得匯率（多來源備援）
+// 自動取得匯率（多來源備援），同時抓 EUR/AUD/JPY/GBP
+const FX_EXTRA = ['eur', 'aud', 'jpy', 'gbp'];
+
 async function fetchExchangeRate() {
   const sources = [
     async () => {
       const r = await fetch('https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json');
       const j = await r.json();
-      return j?.usd?.twd ?? null;
+      const twd = j?.usd?.twd;
+      if (twd) {
+        for (const c of FX_EXTRA) {
+          const usdPer = j?.usd?.[c];
+          if (usdPer) fxRates[c.toUpperCase()] = parseFloat((twd / usdPer).toFixed(4));
+        }
+      }
+      return twd ?? null;
     },
     async () => {
       const r = await fetch('https://api.exchangerate-api.com/v4/latest/USD');
       const j = await r.json();
-      return j?.rates?.TWD ?? null;
+      const twd = j?.rates?.TWD;
+      if (twd) {
+        for (const c of FX_EXTRA) {
+          const usdPer = j?.rates?.[c.toUpperCase()];
+          if (usdPer) fxRates[c.toUpperCase()] = parseFloat((twd / usdPer).toFixed(4));
+        }
+      }
+      return twd ?? null;
     },
     async () => {
       const r = await fetch('https://open.er-api.com/v6/latest/USD');
       const j = await r.json();
-      return j?.rates?.TWD ?? null;
+      const twd = j?.rates?.TWD;
+      if (twd) {
+        for (const c of FX_EXTRA) {
+          const usdPer = j?.rates?.[c.toUpperCase()];
+          if (usdPer) fxRates[c.toUpperCase()] = parseFloat((twd / usdPer).toFixed(4));
+        }
+      }
+      return twd ?? null;
     },
   ];
 
@@ -1642,7 +1675,9 @@ async function fetchExchangeRate() {
 // ─── 價值換算 ─────────────────────────────────────────────────────────────────
 function toTWD(price, currency) {
   if (!price) return 0;
-  return currency === 'USD' ? price * usdRate : price;
+  if (!currency || currency === 'TWD') return price;
+  if (currency === 'USD') return price * usdRate;
+  return fxRates[currency] ? price * fxRates[currency] : price; // 匯率未知時視為台幣
 }
 
 function getHoldingValueTWD(h) {
