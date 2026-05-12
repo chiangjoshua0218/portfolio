@@ -1,4 +1,4 @@
-const VERSION = '3.4.0';
+const VERSION = '3.4.1';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -1345,8 +1345,8 @@ async function refreshAllPrices() {
     await fetchUSStocksBatch(usHoldings);
     await fetchCryptoBatch(cryptoHoldings);
 
-    // 加密貨幣 fallback：CoinGecko 找不到的（如 IBIT 等 ETF），改抓美股報價
-    const cryptoFallback = cryptoHoldings.filter(h => !h.currentPrice);
+    // 加密貨幣 fallback：不在 CoinGecko map 的 symbol（如 IBIT 等 ETF），改抓美股報價
+    const cryptoFallback = cryptoHoldings.filter(h => !getCoinId(h.symbol));
     for (const h of cryptoFallback) {
       await fetchViaYahoo(h.symbol, h, 'USD');
     }
@@ -1616,7 +1616,7 @@ function getCoinId(symbol) {
     SUI:  'sui',
     PEPE: 'pepe',
   };
-  return map[symbol.toUpperCase()] || symbol.toLowerCase().replace(/\s+/g, '-');
+  return map[symbol.toUpperCase()] || null;
 }
 
 // 自動取得匯率（多來源備援），同時抓 EUR/AUD/JPY/GBP
