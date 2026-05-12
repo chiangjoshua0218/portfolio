@@ -28,7 +28,7 @@ header {
 header h1 {
   font-size: 1.75rem;
   font-weight: 700;
-  color: #000000;
+  color: #18181b;
 }
 
 .header-actions {
@@ -45,14 +45,14 @@ header h1 {
   margin-top: 1.5rem;
   padding: 0.5rem 0.75rem;
   border-radius: 6px;
-  background: #ffffff;
+  background: #fafafa;
   font-size: 0.72rem;
   color: rgba(60, 60, 67, 0.45);
 }
 
 /* Cards */
 .card {
-  background: #ffffff;
+  background: #fafafa;
   border: 1px solid rgba(60, 60, 67, 0.18);
   border-radius: 14px;
   padding: 20px;
@@ -163,7 +163,7 @@ header h1 {
 .card-value {
   font-size: 1.1rem;
   font-weight: 600;
-  color: #000000;
+  color: #18181b;
 }
 
 #total-value {
@@ -230,7 +230,7 @@ header h1 {
 @media (max-width: 500px) { .tcard-grid { grid-template-columns: repeat(2, 1fr); } }
 
 .tcard {
-  background: #ffffff;
+  background: #fafafa;
   border-radius: 10px;
   padding: 12px;
   display: flex;
@@ -388,7 +388,7 @@ header h1 {
 }
 
 .btn-primary:disabled {
-  background: #334155;
+  background: #d1d5db;
   color: rgba(60, 60, 67, 0.45);
   cursor: not-allowed;
 }
@@ -538,7 +538,7 @@ header h1 {
 .holding-total {
   font-size: 0.95rem;
   font-weight: 600;
-  color: #000000;
+  color: #18181b;
 }
 
 .holding-detail {
@@ -589,7 +589,7 @@ header h1 {
 .hblock-total {
   font-size: 0.82rem;
   font-weight: 600;
-  color: #000000;
+  color: #18181b;
 }
 .hblock-items {
   display: flex;
@@ -598,7 +598,7 @@ header h1 {
 }
 .hblock-item {
   padding: 5px 0;
-  border-bottom: 1px solid #ffffff;
+  border-bottom: 1px solid rgba(60, 60, 67, 0.08);
 }
 .hblock-item:last-child { border-bottom: none; }
 .hblock-name {
@@ -612,7 +612,7 @@ header h1 {
 .hblock-value {
   font-size: 0.78rem;
   font-weight: 600;
-  color: #000000;
+  color: #18181b;
   margin-top: 2px;
 }
 .hblock-change {
@@ -665,7 +665,7 @@ header h1 {
   flex-direction: column;
   gap: 4px;
   padding: 8px 0 8px 0;
-  border-bottom: 1px solid #ffffff;
+  border-bottom: 1px solid rgba(60, 60, 67, 0.08);
 }
 .hblock-item-edit:last-child { border-bottom: none; }
 .hblock-x-btn {
@@ -686,7 +686,7 @@ header h1 {
 .hblock-edit-input {
   width: 100%;
   padding: 3px 6px;
-  background: #ffffff;
+  background: #fafafa;
   border: 1px solid rgba(60, 60, 67, 0.22);
   border-radius: 4px;
   color: #1c1c1e;
@@ -739,7 +739,7 @@ header h1 {
   margin-top: 8px;
 }
 .pbd-row {
-  background: #ffffff;
+  background: #fafafa;
   border-radius: 10px;
   padding: 12px 16px;
   display: flex;
@@ -760,7 +760,7 @@ header h1 {
 .pbd-total-value {
   font-weight: 700;
   font-size: 1rem;
-  color: #5ac8fa;
+  color: #007aff;
 }
 .pbd-total-change {
   font-size: 0.75rem;
@@ -821,7 +821,7 @@ header h1 {
 }
 
 .modal-content {
-  background: #ffffff;
+  background: #fafafa;
   border: 1px solid rgba(60, 60, 67, 0.18);
   border-radius: 16px;
   padding: 24px;
@@ -837,7 +837,7 @@ header h1 {
 .modal-content h3 {
   font-size: 1rem;
   font-weight: 600;
-  color: #000000;
+  color: #18181b;
 }
 
 .modal-actions {
@@ -979,7 +979,7 @@ header h1 {
 }
 
 .tab.active {
-  color: #000000;
+  color: #18181b;
   border-bottom-color: #007aff;
   font-weight: 600;
 }
@@ -1023,7 +1023,7 @@ header h1 {
   display: flex;
   align-items: center;
   gap: 10px;
-  background: #ffffff;
+  background: #fafafa;
   border: 1px solid rgba(60, 60, 67, 0.18);
   border-radius: 12px;
   padding: 12px 20px;
@@ -1065,7 +1065,7 @@ header h1 {
     flex-direction: column;
     gap: 0;
     margin-bottom: 16px;
-    background: #ffffff;
+    background: #fafafa;
     border-radius: 10px;
     overflow: hidden;
     padding: 0;
@@ -1107,7 +1107,7 @@ header h1 {
     padding: 8px 4px;
     border-radius: 0;
     background: transparent;
-    border-bottom: 1px solid #ffffff;
+    border-bottom: 1px solid rgba(60, 60, 67, 0.08);
   }
   .tcard:last-child { border-bottom: none; }
   .tcard-label { font-size: 0.78rem; margin-bottom: 0; }
@@ -1163,7 +1163,7 @@ header h1 {
     flex-shrink: 0;
     width: calc(50% - 3px);
     scroll-snap-align: start;
-    background: #ffffff;
+    background: #fafafa;
     border-radius: 8px;
     padding: 8px 10px;
     border-bottom: none;
@@ -1184,7 +1184,7 @@ header h1 {
   .hblock-item.expanded .hblock-pnl,
   .hblock-item.expanded .hblock-ma { display: block; }
   .hblock-item[data-expandable]::after {
-    content: '⋯'; font-size: 0.6rem; color: #334155; align-self: flex-end;
+    content: '⋯'; font-size: 0.6rem; color: rgba(60, 60, 67, 0.35); align-self: flex-end;
   }
   .hblock-item[data-expandable].expanded::after { content: '▲'; color: rgba(60, 60, 67, 0.45); font-size: 0.55rem; }
 
