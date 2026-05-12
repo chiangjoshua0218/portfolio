@@ -1,4 +1,4 @@
-const VERSION = '3.4.2';
+const VERSION = '3.4.3';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -12,12 +12,12 @@ const CATEGORY_LABELS = {
 };
 
 const CATEGORY_COLORS = {
-  tw_stock: '#3b82f6',
-  us_stock: '#22c55e',
-  cash:     '#eab308',
-  bond:     '#a855f7',
-  crypto:   '#f97316',
-  debt:     '#ef4444',
+  tw_stock: '#5b8af0',
+  us_stock: '#3eba74',
+  cash:     '#e8a830',
+  bond:     '#a46ee8',
+  crypto:   '#f07840',
+  debt:     '#e85858',
 };
 
 const TARGET_CATS = ['tw_stock', 'us_stock', 'cash', 'bond', 'crypto'];
@@ -1901,17 +1901,22 @@ function renderChart() {
       datasets: [{
         data,
         backgroundColor: colors,
-        borderColor:     '#1e2330',
+        borderColor:     '#f3f1ee',
         borderWidth:     3,
-        hoverOffset:     8,
+        hoverOffset:     6,
       }]
     },
     options: {
       responsive: true,
-      cutout: '62%',
+      cutout: '66%',
       plugins: {
         legend: { display: false },
         tooltip: {
+          backgroundColor: 'rgba(28,28,30,0.85)',
+          titleColor: '#fff',
+          bodyColor: '#e5e5ea',
+          cornerRadius: 8,
+          padding: 10,
           callbacks: {
             label: ctx => {
               const pct = total > 0 ? (ctx.raw / total * 100).toFixed(1) : 0;
@@ -1960,13 +1965,20 @@ function renderProfileChart(pid) {
     type: 'doughnut',
     data: {
       labels:   entries.map(([k]) => CATEGORY_LABELS[k]),
-      datasets: [{ data: entries.map(([, v]) => v), backgroundColor: entries.map(([k]) => CATEGORY_COLORS[k]), borderColor: '#1e2330', borderWidth: 3, hoverOffset: 8 }]
+      datasets: [{ data: entries.map(([, v]) => v), backgroundColor: entries.map(([k]) => CATEGORY_COLORS[k]), borderColor: '#f3f1ee', borderWidth: 3, hoverOffset: 6 }]
     },
     options: {
-      responsive: true, cutout: '62%',
+      responsive: true, cutout: '66%',
       plugins: {
         legend: { display: false },
-        tooltip: { callbacks: { label: ctx => ` ${formatTWD(ctx.raw)} (${total > 0 ? (ctx.raw / total * 100).toFixed(1) : 0}%)` } }
+        tooltip: {
+          backgroundColor: 'rgba(28,28,30,0.85)',
+          titleColor: '#fff',
+          bodyColor: '#e5e5ea',
+          cornerRadius: 8,
+          padding: 10,
+          callbacks: { label: ctx => ` ${formatTWD(ctx.raw)} (${total > 0 ? (ctx.raw / total * 100).toFixed(1) : 0}%)` }
+        }
       }
     }
   });
