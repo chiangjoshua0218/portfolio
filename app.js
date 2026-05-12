@@ -1,4 +1,4 @@
-const VERSION = '3.3.9';
+const VERSION = '3.4.0';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -1345,6 +1345,12 @@ async function refreshAllPrices() {
     await fetchUSStocksBatch(usHoldings);
     await fetchCryptoBatch(cryptoHoldings);
 
+    // 加密貨幣 fallback：CoinGecko 找不到的（如 IBIT 等 ETF），改抓美股報價
+    const cryptoFallback = cryptoHoldings.filter(h => !h.currentPrice);
+    for (const h of cryptoFallback) {
+      await fetchViaYahoo(h.symbol, h, 'USD');
+    }
+
     saveData();
     renderAll();
 
@@ -1691,7 +1697,11 @@ function getHoldingValueTWD(h) {
     return toTWD(h.qty, h.currency); // 直購債：qty = 本金金額
   }
   const price = h.currentPrice;
-  if (!price) return 0;
+  if (!price) {
+    // 債券抓不到價格時，qty 視為本金面額，以持有幣別（預設 USD）換算
+    if (h.category === 'bond') return toTWD(h.qty, h.currency || 'USD');
+    return 0;
+  }
   return toTWD(price * h.qty, h.currency);
 }
 
