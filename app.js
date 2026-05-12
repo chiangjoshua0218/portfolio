@@ -1,27 +1,29 @@
-const VERSION = '3.4.3';
+const VERSION = '3.4.4';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
 const CATEGORY_LABELS = {
-  tw_stock: '台股',
-  us_stock: '美股',
-  cash:     '現金',
-  bond:     '債券',
-  crypto:   '加密貨幣',
-  debt:     '負債',
+  tw_stock:    '台股',
+  us_stock:    '美股',
+  cash:        '現金',
+  bond:        '債券',
+  crypto:      '加密貨幣',
+  real_estate: '房地產',
+  debt:        '負債',
 };
 
 const CATEGORY_COLORS = {
-  tw_stock: '#5b8af0',
-  us_stock: '#3eba74',
-  cash:     '#e8a830',
-  bond:     '#a46ee8',
-  crypto:   '#f07840',
-  debt:     '#e85858',
+  tw_stock:    '#5b8af0',
+  us_stock:    '#3eba74',
+  cash:        '#e8a830',
+  bond:        '#a46ee8',
+  crypto:      '#f07840',
+  real_estate: '#c47a50',
+  debt:        '#e85858',
 };
 
-const TARGET_CATS = ['tw_stock', 'us_stock', 'cash', 'bond', 'crypto'];
-const CATEGORY_ORDER = { tw_stock: 0, us_stock: 1, bond: 2, cash: 3, crypto: 4, debt: 5 };
+const TARGET_CATS = ['tw_stock', 'us_stock', 'cash', 'bond', 'crypto', 'real_estate'];
+const CATEGORY_ORDER = { tw_stock: 0, us_stock: 1, bond: 2, cash: 3, crypto: 4, real_estate: 5, debt: 6 };
 
 // ─── 狀態 ────────────────────────────────────────────────────────────────────
 let profiles              = []; // { id, name, holdings, targetAllocations, historicalRecords }
@@ -760,18 +762,19 @@ function renderProfilePanel(pid) {
 function renderOverview() {
   const allHoldings = profiles.flatMap(p => p.holdings);
 
-  const totals = { tw_stock: 0, us_stock: 0, cash: 0, bond: 0, crypto: 0, debt: 0 };
+  const totals = { tw_stock: 0, us_stock: 0, cash: 0, bond: 0, crypto: 0, real_estate: 0, debt: 0 };
   allHoldings.forEach(h => {
     totals[h.category] = (totals[h.category] || 0) + getHoldingValueTWD(h);
   });
   const total = Object.values(totals).reduce((a, b) => a + b, 0); // debt 已是負值，自動計算淨資產
 
-  document.getElementById('total-value').textContent  = formatTWD(total);
-  document.getElementById('tw-value').textContent     = formatTWD(totals.tw_stock);
-  document.getElementById('us-value').textContent     = formatTWD(totals.us_stock);
-  document.getElementById('cash-value').textContent   = formatTWD(totals.cash);
-  document.getElementById('bond-value').textContent   = formatTWD(totals.bond);
-  document.getElementById('crypto-value').textContent = formatTWD(totals.crypto);
+  document.getElementById('total-value').textContent        = formatTWD(total);
+  document.getElementById('tw-value').textContent           = formatTWD(totals.tw_stock);
+  document.getElementById('us-value').textContent           = formatTWD(totals.us_stock);
+  document.getElementById('cash-value').textContent         = formatTWD(totals.cash);
+  document.getElementById('bond-value').textContent         = formatTWD(totals.bond);
+  document.getElementById('crypto-value').textContent       = formatTWD(totals.crypto);
+  document.getElementById('realestate-value').textContent   = formatTWD(totals.real_estate);
   const debtEl = document.getElementById('debt-value');
   if (debtEl) debtEl.textContent = totals.debt < 0 ? formatTWD(totals.debt) : '—';
 
@@ -899,12 +902,12 @@ function addHolding(e, profileId, formSuffix) {
   const costPrice   = costPriceEl ? (parseFloat(costPriceEl.value) || null) : null;
 
   if (isNaN(qty) || qty < 0) return alert('請輸入有效數量');
-  if (!['cash', 'debt', 'bond'].includes(category) && !symbol) return alert('請輸入代號');
+  if (!['cash', 'debt', 'bond', 'real_estate'].includes(category) && !symbol) return alert('請輸入代號');
 
   const holding = {
     id:           Date.now().toString(),
     category,
-    symbol:       (category === 'cash' || category === 'debt' || (category === 'bond' && !symbol)) ? '' : symbol,
+    symbol:       (category === 'cash' || category === 'debt' || category === 'real_estate' || (category === 'bond' && !symbol)) ? '' : symbol,
     name:         name || symbol || CATEGORY_LABELS[category],
     qty,
     currency,
@@ -1141,13 +1144,13 @@ function onCategoryChange(pid) {
   const qtyLabel         = document.getElementById(`qty-label-${pid}`);
   const symbolHint       = document.getElementById(`symbol-hint-${pid}`);
 
-  if (cat === 'cash' || cat === 'debt') {
+  if (cat === 'cash' || cat === 'debt' || cat === 'real_estate') {
     symbolGroup.style.display      = 'none';
     manualPriceGroup.style.display = 'none';
     currencyGroup.style.display    = '';
-    qtyLabel.textContent           = cat === 'debt' ? '負債金額' : '金額';
+    qtyLabel.textContent           = cat === 'debt' ? '負債金額' : cat === 'real_estate' ? '市值金額' : '金額';
     const currEl = document.getElementById(`holding-currency-${pid}`);
-    if (currEl) currEl.value = 'TWD';
+    if (currEl && cat !== 'real_estate') currEl.value = 'TWD';
   } else if (cat === 'crypto') {
     symbolGroup.style.display      = '';
     manualPriceGroup.style.display = '';
@@ -1325,6 +1328,7 @@ function renderHoldings(pid) {
 // ─── 價格抓取 ────────────────────────────────────────────────────────────────
 function getEffectiveFetchCat(h) {
   if (h.category === 'bond' && !h.symbol) return null; // 直購債，無代號，不抓報價
+  if (h.category === 'real_estate') return null; // 房地產，手動輸入市值，不抓報價
   return h.fetchAs || (h.category === 'bond' ? (h.currency === 'TWD' ? 'tw_stock' : 'us_stock') : h.category);
 }
 
@@ -1687,7 +1691,7 @@ function toTWD(price, currency) {
 }
 
 function getHoldingValueTWD(h) {
-  if (h.category === 'cash') {
+  if (h.category === 'cash' || h.category === 'real_estate') {
     return toTWD(h.qty, h.currency);
   }
   if (h.category === 'debt') {
@@ -1949,7 +1953,7 @@ function renderProfileChart(pid) {
   const canvas = document.getElementById(`profileChart-${pid}`);
   if (!canvas) return;
 
-  const totals = { tw_stock: 0, us_stock: 0, cash: 0, bond: 0, crypto: 0 };
+  const totals = { tw_stock: 0, us_stock: 0, cash: 0, bond: 0, crypto: 0, real_estate: 0 };
   p.holdings.forEach(h => { totals[h.category] = (totals[h.category] || 0) + getHoldingValueTWD(h); });
   const total   = Object.values(totals).reduce((a, b) => a + b, 0);
   const entries = Object.entries(totals).filter(([, v]) => v > 0);

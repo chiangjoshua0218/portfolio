@@ -130,18 +130,18 @@ header h1 {
 /* Summary Cards */
 .summary-cards {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
-  gap: 12px;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 8px;
   margin-bottom: 24px;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1100px) {
   .summary-cards {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(4, 1fr);
   }
 }
 
-@media (max-width: 500px) {
+@media (max-width: 600px) {
   .summary-cards {
     grid-template-columns: repeat(2, 1fr);
   }
@@ -149,7 +149,20 @@ header h1 {
 
 .summary-card {
   text-align: center;
-  padding: 16px;
+  padding: 10px 6px;
+}
+
+.summary-card .card-label {
+  font-size: 0.68rem;
+  letter-spacing: 0.03em;
+}
+
+.summary-card .card-value {
+  font-size: 0.9rem;
+}
+
+#total-value {
+  font-size: 1.05rem;
 }
 
 .card-label {
@@ -167,7 +180,6 @@ header h1 {
 }
 
 #total-value {
-  font-size: 1.4rem;
   color: #2563eb;
 }
 
@@ -507,8 +519,9 @@ header h1 {
 .badge-us_stock { background: #dcfce7; color: #15803d; }
 .badge-cash     { background: #fef9c3; color: #854d0e; }
 .badge-bond     { background: #f3e8ff; color: #7e22ce; }
-.badge-crypto   { background: #ffedd5; color: #9a3412; }
-.badge-debt     { background: #fee2e2; color: #991b1b; }
+.badge-crypto      { background: #ffedd5; color: #9a3412; }
+.badge-real_estate { background: #fdebd0; color: #7c3d12; }
+.badge-debt        { background: #fee2e2; color: #991b1b; }
 
 .holding-name {
   font-size: 0.9rem;
