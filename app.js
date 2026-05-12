@@ -1,4 +1,4 @@
-const VERSION = '3.4.1';
+const VERSION = '3.4.2';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -2080,12 +2080,12 @@ function renderProfileHistoricalChart(pid) {
           type: 'linear',
           afterBuildTicks: axis => { axis.ticks = yearTickValues.map(v => ({ value: v })); },
           ticks: { color: '#94a3b8', maxRotation: 0, callback: v => new Date(v).getFullYear().toString() },
-          grid: { color: '#2d3748' }
+          grid: { display: false }
         },
         y: {
           beginAtZero: false,
           ticks: { stepSize: 10_000_000, color: '#94a3b8', callback: v => (v / 1_000_000).toFixed(1) + 'M' },
-          grid: { color: '#2d3748' }
+          grid: { display: false }
         }
       }
     }
@@ -2278,7 +2278,7 @@ function renderHistoricalChart() {
             maxRotation: 0,
             callback: v => new Date(v).getFullYear().toString(),
           },
-          grid: { color: '#2d3748' }
+          grid: { display: false }
         },
         y: {
           beginAtZero: false,
@@ -2287,7 +2287,7 @@ function renderHistoricalChart() {
             color: '#94a3b8',
             callback: v => (v / 1_000_000).toFixed(1) + 'M'
           },
-          grid: { color: '#2d3748' }
+          grid: { display: false }
         }
       }
     }
