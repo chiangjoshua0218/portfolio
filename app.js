@@ -1,4 +1,4 @@
-const VERSION = '3.4.4';
+const VERSION = '3.4.5';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -31,6 +31,7 @@ let activeProfileId       = 'overview';
 let historicalRecords     = []; // overview 用（所有人合計）
 let usdRate               = 32;
 let fxRates               = {}; // 非 USD 幣別兌台幣匯率，如 { EUR: 35.2, AUD: 21.0, JPY: 0.22, GBP: 41.5 }
+let rateSnapshot          = {}; // { date, usdRate, fxRates } — 每日第一次抓到新匯率前的快照，用於計算現金匯差
 let chart                 = null;
 let historicalChart       = null;
 let profileCharts         = {}; // { [pid]: Chart instance }
@@ -167,7 +168,7 @@ async function init() {
     if (!gistToken || !gistId || gistSaveTimer === null) return;
     clearTimeout(gistSaveTimer);
     gistSaveTimer = null;
-    const config = { version: 2, usdRate, fxRates, historicalRecords, profiles };
+    const config = { version: 2, usdRate, fxRates, rateSnapshot, historicalRecords, profiles };
     fetch(`https://api.github.com/gists/${gistId}`, {
       method: 'PATCH', keepalive: true,
       headers: { Authorization: `Bearer ${gistToken}`, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' },
@@ -206,6 +207,7 @@ function applyConfig(config) {
     historicalRecords = config.historicalRecords || [];
     usdRate           = config.usdRate || 32;
     fxRates           = config.fxRates || {};
+    rateSnapshot      = config.rateSnapshot || {};
   } else {
     // v1 migration: wrap existing data into single profile
     const migratedHistory = (config.historicalRecords || []).map(r => {
@@ -221,8 +223,9 @@ function applyConfig(config) {
       historicalRecords: migratedHistory,
     }];
     historicalRecords = migratedHistory;
-    usdRate = config.usdRate || 32;
-    fxRates = config.fxRates || {};
+    usdRate      = config.usdRate || 32;
+    fxRates      = config.fxRates || {};
+    rateSnapshot = config.rateSnapshot || {};
   }
   profiles.forEach(p => {
     holdingsSortBy[p.id] = holdingsSortBy[p.id] || 'none';
@@ -270,7 +273,7 @@ async function onCreateNewFile() {
     });
     fileHandle = handle;
     await dbSet('fileHandle', handle);
-    const config = { version: 2, usdRate, fxRates, historicalRecords, profiles };
+    const config = { version: 2, usdRate, fxRates, rateSnapshot, historicalRecords, profiles };
     await writeConfigFile(handle, config);
     hideSetupModal();
   } catch (e) {
@@ -347,7 +350,7 @@ function loadFromLocalStorage() {
 }
 
 function saveData() {
-  const config = { version: 2, usdRate, fxRates, historicalRecords, profiles };
+  const config = { version: 2, usdRate, fxRates, rateSnapshot, historicalRecords, profiles };
   localStorage.setItem('portfolio_v2', JSON.stringify(config));
   if (fileHandle) {
     writeConfigFile(fileHandle, config).catch(e => console.warn('寫入設定檔失敗:', e));
@@ -428,7 +431,7 @@ async function saveGistSettings() {
     renderAll(); refreshAllPrices();
   } else {
     // Gist 沒有舊資料，把現有資料推上去
-    await saveToGist({ version: 2, usdRate, fxRates, historicalRecords, profiles });
+    await saveToGist({ version: 2, usdRate, fxRates, rateSnapshot, historicalRecords, profiles });
   }
   updateStorageInfo();
 }
@@ -443,7 +446,7 @@ function clearGistSettings() {
 
 // ─── 匯出 / 匯入設定檔 ────────────────────────────────────────────────────────
 function exportConfig() {
-  const config = { version: 2, usdRate, fxRates, historicalRecords, profiles };
+  const config = { version: 2, usdRate, fxRates, rateSnapshot, historicalRecords, profiles };
   const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -779,8 +782,8 @@ function renderOverview() {
   if (debtEl) debtEl.textContent = totals.debt < 0 ? formatTWD(totals.debt) : '—';
 
   // 今日各分類變化
-  const catChanges   = { tw_stock: 0, us_stock: 0, bond: 0, crypto: 0 };
-  const catHasChange = { tw_stock: false, us_stock: false, bond: false, crypto: false };
+  const catChanges   = { tw_stock: 0, us_stock: 0, bond: 0, crypto: 0, cash: 0 };
+  const catHasChange = { tw_stock: false, us_stock: false, bond: false, crypto: false, cash: false };
   let totalDayChange = 0, hasAnyChange = false;
   allHoldings.forEach(h => {
     if (h.currentPrice && h.previousClose && h.category !== 'cash') {
@@ -793,6 +796,21 @@ function renderOverview() {
       }
     }
   });
+
+  // 外幣現金：利用匯率快照計算今日匯差
+  if (rateSnapshot.date === new Date().toISOString().slice(0, 10)) {
+    allHoldings.forEach(h => {
+      if (h.category !== 'cash' || !h.currency || h.currency === 'TWD') return;
+      const prevRate = h.currency === 'USD' ? rateSnapshot.usdRate : (rateSnapshot.fxRates?.[h.currency] ?? 0);
+      const curRate  = h.currency === 'USD' ? usdRate : (fxRates[h.currency] ?? 0);
+      if (!prevRate || !curRate) return;
+      const delta = h.qty * (curRate - prevRate);
+      catChanges.cash   += delta;
+      catHasChange.cash  = true;
+      totalDayChange    += delta;
+      hasAnyChange       = true;
+    });
+  }
 
   const applyChange = (elId, change, base) => {
     const el = document.getElementById(elId);
@@ -811,6 +829,7 @@ function renderOverview() {
   if (catHasChange.us_stock) applyChange('us-change',     catChanges.us_stock, totals.us_stock);
   if (catHasChange.bond)     applyChange('bond-change',   catChanges.bond,     totals.bond);
   if (catHasChange.crypto)   applyChange('crypto-change', catChanges.crypto,   totals.crypto);
+  if (catHasChange.cash)     applyChange('cash-change',   catChanges.cash,     totals.cash);
 
   renderProfileBreakdown();
   renderChart();
@@ -1670,6 +1689,10 @@ async function fetchExchangeRate() {
     try {
       const rate = await source();
       if (rate && rate > 1) {
+        const today = new Date().toISOString().slice(0, 10);
+        if (rateSnapshot.date !== today) {
+          rateSnapshot = { date: today, usdRate, fxRates: { ...fxRates } };
+        }
         usdRate = parseFloat(parseFloat(rate).toFixed(2));
         updateRateDisplay();
         saveData();

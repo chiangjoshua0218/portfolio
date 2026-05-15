@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>資產總覽</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <link rel="stylesheet" href="style.css?v=3.4.4" />
+  <link rel="stylesheet" href="style.css?v=3.4.5" />
 </head>
 <body>
   <!-- Tab bar -->
@@ -18,7 +18,7 @@
       <div class="header-title">
         <h1>📊 資產總覽</h1>
         <div class="version-info">
-          <span class="version-tag">v3.4.4</span>
+          <span class="version-tag">v3.4.5</span>
           <span class="author-tag">by joshchiang0218</span>
         </div>
       </div>
@@ -54,6 +54,7 @@
         <div class="card summary-card">
           <div class="card-label">現金</div>
           <div class="card-value" id="cash-value">—</div>
+          <div id="cash-change" class="summary-change"></div>
         </div>
         <div class="card summary-card">
           <div class="card-label">債券</div>
@@ -307,6 +308,6 @@
     <button class="btn btn-primary" onclick="onRequestPermission()">授權讀取</button>
   </div>
 
-  <script src="app.js?v=3.4.4"></script>
+  <script src="app.js?v=3.4.5"></script>
 </body>
 </html>
