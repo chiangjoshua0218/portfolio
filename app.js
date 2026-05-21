@@ -1,4 +1,4 @@
-const VERSION = '3.4.5';
+const VERSION = '3.4.6';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -1433,8 +1433,9 @@ async function fetchTWStockPrice(holding) {
         const data  = await res.json();
         const item  = data?.msgArray?.[0];
         // z='-' 時（兩筆成交之間）：用 bid/ask 中間價，再 fallback 開盤價
-        const bid   = parsePrice(item?.b?.split('_')[0]);
-        const ask   = parsePrice(item?.a?.split('_')[0]);
+        // 委買/委賣第一檔可能是市價單（0.0000），取第一個非零價格
+        const bid   = parsePrice(item?.b?.split('_').find(v => parseFloat(v) > 0));
+        const ask   = parsePrice(item?.a?.split('_').find(v => parseFloat(v) > 0));
         const midPrice = (bid && ask) ? (bid + ask) / 2 : (bid || ask || null);
         const price = parsePrice(item?.z) || midPrice || parsePrice(item?.o);
         const prev  = parsePrice(item?.y);
