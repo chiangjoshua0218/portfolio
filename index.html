@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>資產總覽</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <link rel="stylesheet" href="style.css?v=3.4.5" />
+  <link rel="stylesheet" href="style.css?v=3.5.0" />
 </head>
 <body>
   <!-- Tab bar -->
@@ -18,7 +18,7 @@
       <div class="header-title">
         <h1>📊 資產總覽</h1>
         <div class="version-info">
-          <span class="version-tag">v3.4.6</span>
+          <span class="version-tag">v3.5.0</span>
           <span class="author-tag">by joshchiang0218</span>
         </div>
       </div>
@@ -86,10 +86,22 @@
       <div class="main-content">
         <div class="card chart-card">
           <h2>資產配置</h2>
-          <div class="chart-wrapper">
-            <canvas id="allocationChart"></canvas>
+          <div class="chart-tabs">
+            <button id="chart-tab-category" class="chart-tab active" onclick="switchChartTab('category')">類別</button>
+            <button id="chart-tab-stocktype" class="chart-tab" onclick="switchChartTab('stocktype')">股票類型</button>
           </div>
-          <div id="chart-legend" class="chart-legend"></div>
+          <div id="chart-view-category">
+            <div class="chart-wrapper">
+              <canvas id="allocationChart"></canvas>
+            </div>
+            <div id="chart-legend" class="chart-legend"></div>
+          </div>
+          <div id="chart-view-stocktype" style="display:none">
+            <div class="chart-wrapper">
+              <canvas id="stockTypeChart"></canvas>
+            </div>
+            <div id="stock-type-legend" class="chart-legend"></div>
+          </div>
         </div>
 
         <div class="card">
@@ -187,6 +199,11 @@
             <option value="JPY">JPY 日圓</option>
             <option value="GBP">GBP 英鎊</option>
           </select>
+        </div>
+        <div class="form-group" id="etf-group-add" style="display:none">
+          <label class="checkbox-label">
+            <input type="checkbox" id="holding-is-etf-add" /> 這是 ETF（指數股票型基金）
+          </label>
         </div>
         <div class="form-group" id="cost-price-group-add">
           <label>平均買入成本 <span class="hint">（選填，用於計算損益）</span></label>

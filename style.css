@@ -207,9 +207,34 @@ header h1 {
 .chart-card h2 {
   font-size: 1rem;
   font-weight: 600;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
   color: rgba(60, 60, 67, 0.75);
   align-self: flex-start;
+}
+
+.chart-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 14px;
+  align-self: flex-start;
+}
+.chart-tab {
+  padding: 3px 12px;
+  font-size: 0.78rem;
+  border-radius: 6px;
+  border: 1px solid #d1d5db;
+  background: transparent;
+  color: #6b7280;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.chart-tab.active {
+  background: #5b8af0;
+  border-color: #5b8af0;
+  color: #fff;
+}
+.chart-tab:not(.active):hover {
+  background: #f3f4f6;
 }
 
 .chart-wrapper {
@@ -352,6 +377,16 @@ header h1 {
   color: rgba(60, 60, 67, 0.72);
   font-weight: 500;
 }
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  color: rgba(60, 60, 67, 0.72);
+  font-weight: 500;
+  cursor: pointer;
+}
+.checkbox-label input[type="checkbox"] { width: auto; cursor: pointer; }
 
 .form-group input,
 .form-group select {
@@ -707,6 +742,14 @@ header h1 {
   box-sizing: border-box;
 }
 .hblock-edit-input:focus { outline: none; border-color: #2563eb; }
+.hblock-edit-etf-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.75rem;
+  color: rgba(60, 60, 67, 0.72);
+}
+.hblock-edit-etf-label input[type="checkbox"] { width: auto; }
 
 /* 紀錄明細可收合 */
 .records-details summary {

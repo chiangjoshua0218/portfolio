@@ -1,4 +1,4 @@
-const VERSION = '3.4.6';
+const VERSION = '3.5.0';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -25,6 +25,19 @@ const CATEGORY_COLORS = {
 const TARGET_CATS = ['tw_stock', 'us_stock', 'cash', 'bond', 'crypto', 'real_estate'];
 const CATEGORY_ORDER = { tw_stock: 0, us_stock: 1, bond: 2, cash: 3, crypto: 4, real_estate: 5, debt: 6 };
 
+const STOCK_TYPE_LABELS = {
+  tw_etf:       '台股 ETF',
+  tw_stock_ind: '台股個股',
+  us_etf:       '美股 ETF',
+  us_stock_ind: '美股個股',
+};
+const STOCK_TYPE_COLORS = {
+  tw_etf:       '#5b8af0',
+  tw_stock_ind: '#a3c0ff',
+  us_etf:       '#3eba74',
+  us_stock_ind: '#90dbb0',
+};
+
 // ─── 狀態 ────────────────────────────────────────────────────────────────────
 let profiles              = []; // { id, name, holdings, targetAllocations, historicalRecords }
 let activeProfileId       = 'overview';
@@ -33,6 +46,7 @@ let usdRate               = 32;
 let fxRates               = {}; // 非 USD 幣別兌台幣匯率，如 { EUR: 35.2, AUD: 21.0, JPY: 0.22, GBP: 41.5 }
 let rateSnapshot          = {}; // { date, usdRate, fxRates } — 每日第一次抓到新匯率前的快照，用於計算現金匯差
 let chart                 = null;
+let stockTypeChart        = null;
 let historicalChart       = null;
 let profileCharts         = {}; // { [pid]: Chart instance }
 let profileHistoricalCharts = {}; // { [pid]: Chart instance }
@@ -833,6 +847,7 @@ function renderOverview() {
 
   renderProfileBreakdown();
   renderChart();
+  renderStockTypeChart();
   renderHistoricalRecordsList();
   renderHistoricalChart();
 }
@@ -919,6 +934,8 @@ function addHolding(e, profileId, formSuffix) {
   const fetchAs     = fetchAsEl ? (fetchAsEl.value || null) : null;
   const costPriceEl = document.getElementById(`holding-cost-price-${fs}`);
   const costPrice   = costPriceEl ? (parseFloat(costPriceEl.value) || null) : null;
+  const isEtfEl     = document.getElementById(`holding-is-etf-${fs}`);
+  const isEtf       = isEtfEl ? isEtfEl.checked : false;
 
   if (isNaN(qty) || qty < 0) return alert('請輸入有效數量');
   if (!['cash', 'debt', 'bond', 'real_estate'].includes(category) && !symbol) return alert('請輸入代號');
@@ -934,6 +951,7 @@ function addHolding(e, profileId, formSuffix) {
     currentPrice: manualPrice || null,
     ...(fetchAs ? { fetchAs } : {}),
     ...(costPrice ? { costPrice } : {}),
+    ...((category === 'tw_stock' || category === 'us_stock') ? { isEtf } : {}),
   };
 
   p.holdings.push(holding);
@@ -986,6 +1004,7 @@ function saveHoldingsEdit(pid) {
     const qtyEl    = document.querySelector(`#holdings-list-${pid} [data-id="${h.id}"][data-field="qty"]`);
     const priceEl  = document.querySelector(`#holdings-list-${pid} [data-id="${h.id}"][data-field="price"]`);
     const costEl   = document.querySelector(`#holdings-list-${pid} [data-id="${h.id}"][data-field="cost"]`);
+    const isEtfEl  = document.querySelector(`#holdings-list-${pid} [data-id="${h.id}"][data-field="isEtf"]`);
     if (nameVal) h.name = nameVal;
     if (catEl)   h.category = catEl.value;
     if (qtyEl)   h.qty  = parseFloat(qtyEl.value) || h.qty;
@@ -995,6 +1014,7 @@ function saveHoldingsEdit(pid) {
       if (mp) h.currentPrice = mp;
     }
     if (costEl) h.costPrice = parseFloat(costEl.value) || null;
+    if (isEtfEl && (h.category === 'tw_stock' || h.category === 'us_stock')) h.isEtf = isEtfEl.checked;
   });
   saveData();
   cancelHoldingsEdit(pid);
@@ -1162,11 +1182,13 @@ function onCategoryChange(pid) {
   const currencyGroup    = document.getElementById(`currency-group-${pid}`);
   const qtyLabel         = document.getElementById(`qty-label-${pid}`);
   const symbolHint       = document.getElementById(`symbol-hint-${pid}`);
+  const etfGroup         = document.getElementById(`etf-group-${pid}`);
 
   if (cat === 'cash' || cat === 'debt' || cat === 'real_estate') {
     symbolGroup.style.display      = 'none';
     manualPriceGroup.style.display = 'none';
     currencyGroup.style.display    = '';
+    if (etfGroup) etfGroup.style.display = 'none';
     qtyLabel.textContent           = cat === 'debt' ? '負債金額' : cat === 'real_estate' ? '市值金額' : '金額';
     const currEl = document.getElementById(`holding-currency-${pid}`);
     if (currEl && cat !== 'real_estate') currEl.value = 'TWD';
@@ -1174,24 +1196,28 @@ function onCategoryChange(pid) {
     symbolGroup.style.display      = '';
     manualPriceGroup.style.display = '';
     currencyGroup.style.display    = 'none';
+    if (etfGroup) etfGroup.style.display = 'none';
     qtyLabel.textContent           = '數量（顆）';
     symbolHint.textContent         = '（如：BTC、ETH、SOL）';
   } else if (cat === 'us_stock') {
     symbolGroup.style.display      = '';
     manualPriceGroup.style.display = '';
     currencyGroup.style.display    = 'none';
+    if (etfGroup) etfGroup.style.display = '';
     qtyLabel.textContent           = '數量（股）';
     symbolHint.textContent         = '（如：AAPL、TSLA、VOO）';
   } else if (cat === 'tw_stock') {
     symbolGroup.style.display      = '';
     manualPriceGroup.style.display = '';
     currencyGroup.style.display    = 'none';
+    if (etfGroup) etfGroup.style.display = '';
     qtyLabel.textContent           = '數量（股）';
     symbolHint.textContent         = '（如：2330、0050、006208）';
   } else if (cat === 'bond') {
     symbolGroup.style.display      = '';
     manualPriceGroup.style.display = '';
     currencyGroup.style.display    = '';
+    if (etfGroup) etfGroup.style.display = 'none';
     qtyLabel.textContent           = '本金金額 / 數量（股/張）';
     symbolHint.textContent         = '（如：00679B、TLT；直購/定存債請留空）';
   }
@@ -1257,6 +1283,7 @@ function renderHoldings(pid) {
         const catOptions = Object.entries(CATEGORY_LABELS).map(([v, l]) =>
           `<option value="${v}"${h.category === v ? ' selected' : ''}>${l}</option>`
         ).join('');
+        const showEtf = cat === 'tw_stock' || cat === 'us_stock';
         return `<div class="hblock-item hblock-item-edit">
           <button class="hblock-x-btn" onclick="deleteHoldingInEdit('${h.id}','${pid}')">×</button>
           <select class="hblock-edit-input" data-id="${h.id}" data-field="category">${catOptions}</select>
@@ -1264,6 +1291,7 @@ function renderHoldings(pid) {
           <input class="hblock-edit-input" data-id="${h.id}" data-field="qty" type="number" value="${h.qty}" min="0" step="any" placeholder="數量">
           <input class="hblock-edit-input" data-id="${h.id}" data-field="price" type="number" value="${h.manualPrice || ''}" min="0" step="any" placeholder="手動單價（選填）">
           <input class="hblock-edit-input" data-id="${h.id}" data-field="cost" type="number" value="${h.costPrice || ''}" min="0" step="any" placeholder="買入均價（選填）">
+          ${showEtf ? `<label class="hblock-edit-etf-label"><input type="checkbox" class="hblock-edit-input" data-id="${h.id}" data-field="isEtf"${h.isEtf ? ' checked' : ''}> ETF</label>` : ''}
         </div>`;
       }
       const valueTWD = getHoldingValueTWD(h);
@@ -1968,6 +1996,89 @@ function renderChart() {
       </div>`;
   }).join('');
   document.getElementById('chart-legend').innerHTML = legendHtml;
+}
+
+// ─── 渲染：股票類型圓餅圖（ETF vs 個股）─────────────────────────────────────
+function renderStockTypeChart() {
+  const allHoldings = profiles.flatMap(p => p.holdings);
+  const totals = { tw_etf: 0, tw_stock_ind: 0, us_etf: 0, us_stock_ind: 0 };
+  allHoldings.forEach(h => {
+    if (h.category === 'tw_stock') {
+      if (h.isEtf) totals.tw_etf += getHoldingValueTWD(h);
+      else totals.tw_stock_ind += getHoldingValueTWD(h);
+    } else if (h.category === 'us_stock') {
+      if (h.isEtf) totals.us_etf += getHoldingValueTWD(h);
+      else totals.us_stock_ind += getHoldingValueTWD(h);
+    }
+  });
+
+  const total   = Object.values(totals).reduce((a, b) => a + b, 0);
+  const entries = Object.entries(totals).filter(([, v]) => v > 0);
+  const legendEl = document.getElementById('stock-type-legend');
+
+  const ctx = document.getElementById('stockTypeChart')?.getContext('2d');
+  if (!ctx) return;
+  if (stockTypeChart) stockTypeChart.destroy();
+
+  if (entries.length === 0) {
+    if (legendEl) legendEl.innerHTML = '<div style="color:#94a3b8;font-size:0.85rem;text-align:center;padding:1rem">台股/美股尚無資料</div>';
+    return;
+  }
+
+  stockTypeChart = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: entries.map(([k]) => STOCK_TYPE_LABELS[k]),
+      datasets: [{
+        data:            entries.map(([, v]) => v),
+        backgroundColor: entries.map(([k]) => STOCK_TYPE_COLORS[k]),
+        borderColor:     '#f3f1ee',
+        borderWidth:     3,
+        hoverOffset:     6,
+      }]
+    },
+    options: {
+      responsive: true,
+      cutout: '66%',
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: 'rgba(28,28,30,0.85)',
+          titleColor: '#fff',
+          bodyColor: '#e5e5ea',
+          cornerRadius: 8,
+          padding: 10,
+          callbacks: {
+            label: ctx => {
+              const pct = total > 0 ? (ctx.raw / total * 100).toFixed(1) : 0;
+              return ` ${formatTWD(ctx.raw)} (${pct}%)`;
+            }
+          }
+        }
+      }
+    }
+  });
+
+  if (legendEl) {
+    legendEl.innerHTML = entries.map(([k, v]) => {
+      const pct = total > 0 ? (v / total * 100).toFixed(1) : '0.0';
+      return `
+        <div class="legend-item">
+          <div class="legend-left">
+            <div class="legend-dot" style="background:${STOCK_TYPE_COLORS[k]}"></div>
+            <span>${STOCK_TYPE_LABELS[k]}</span>
+          </div>
+          <span class="legend-pct">${pct}%</span>
+        </div>`;
+    }).join('');
+  }
+}
+
+function switchChartTab(tab) {
+  document.getElementById('chart-view-category').style.display  = tab === 'category'  ? '' : 'none';
+  document.getElementById('chart-view-stocktype').style.display = tab === 'stocktype' ? '' : 'none';
+  document.getElementById('chart-tab-category').classList.toggle('active',  tab === 'category');
+  document.getElementById('chart-tab-stocktype').classList.toggle('active', tab === 'stocktype');
 }
 
 // ─── Per-profile 圓餅圖 ───────────────────────────────────────────────────────
