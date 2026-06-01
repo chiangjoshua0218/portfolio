@@ -1530,8 +1530,8 @@ async function fetchViaYahoo(symbol, holding, currency) {
   const encoded = encodeURIComponent(symbol);
   try {
     let res = await fetch(`${CF_WORKER_URL}/?symbol=${encoded}&market=us`);
-    if (res.status === 502) {
-      await new Promise(r => setTimeout(r, 1000));
+    if (res.status === 502 || res.status === 520) {
+      await new Promise(r => setTimeout(r, 1500));
       res = await fetch(`${CF_WORKER_URL}/?symbol=${encoded}&market=us`);
     }
     if (!res.ok) return;
