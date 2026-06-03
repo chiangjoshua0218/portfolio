@@ -1,4 +1,4 @@
-const VERSION = '3.5.1';
+const VERSION = '3.5.2';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -48,8 +48,9 @@ let rateSnapshot          = {}; // { date, usdRate, fxRates } — 每日第一�
 let chart                 = null;
 let stockTypeChart        = null;
 let historicalChart       = null;
-let profileCharts         = {}; // { [pid]: Chart instance }
-let profileHistoricalCharts = {}; // { [pid]: Chart instance }
+let profileCharts             = {}; // { [pid]: Chart instance }
+let profileStockTypeCharts    = {}; // { [pid]: Chart instance }
+let profileHistoricalCharts   = {}; // { [pid]: Chart instance }
 let holdingsSortBy        = {}; // { [profileId]: 'none'|'value' }
 let holdingsEditMode      = {}; // { [profileId]: boolean }
 let isRefreshing          = false;
@@ -605,6 +606,7 @@ function deleteProfile(id) {
   profiles = profiles.filter(pr => pr.id !== id);
   delete holdingsSortBy[id];
   if (profileCharts[id]) { profileCharts[id].destroy(); delete profileCharts[id]; }
+  if (profileStockTypeCharts[id]) { profileStockTypeCharts[id].destroy(); delete profileStockTypeCharts[id]; }
   if (profileHistoricalCharts[id]) { profileHistoricalCharts[id].destroy(); delete profileHistoricalCharts[id]; }
   const panel = document.getElementById(`panel-${id}`);
   if (panel) panel.remove();
@@ -650,10 +652,22 @@ function buildProfilePanelHTML(p) {
   <div class="main-content">
     <div class="card chart-card">
       <h2>資產配置</h2>
-      <div class="chart-wrapper">
-        <canvas id="profileChart-${pid}"></canvas>
+      <div class="chart-tabs">
+        <button id="pchart-tab-category-${pid}" class="chart-tab active" onclick="switchProfileChartTab('${pid}','category')">類別</button>
+        <button id="pchart-tab-stocktype-${pid}" class="chart-tab" onclick="switchProfileChartTab('${pid}','stocktype')">股票類型</button>
       </div>
-      <div id="profile-chart-legend-${pid}" class="chart-legend"></div>
+      <div id="pchart-view-category-${pid}">
+        <div class="chart-wrapper">
+          <canvas id="profileChart-${pid}"></canvas>
+        </div>
+        <div id="profile-chart-legend-${pid}" class="chart-legend"></div>
+      </div>
+      <div id="pchart-view-stocktype-${pid}" style="display:none">
+        <div class="chart-wrapper">
+          <canvas id="profileStockTypeChart-${pid}"></canvas>
+        </div>
+        <div id="profile-stocktype-legend-${pid}" class="chart-legend"></div>
+      </div>
     </div>
 
     <div class="card">
@@ -804,6 +818,7 @@ function renderProfilePanel(pid) {
   renderTargetCards(pid);
   renderHoldings(pid);
   renderProfileChart(pid);
+  renderProfileStockTypeChart(pid);
   renderProfileHistoricalChart(pid);
   renderProfileHistoricalRecordsList(pid);
 }
@@ -2160,6 +2175,80 @@ function renderProfileChart(pid) {
       <div class="legend-left"><div class="legend-dot" style="background:${CATEGORY_COLORS[k]}"></div><span>${CATEGORY_LABELS[k]}</span></div>
       <span class="legend-pct">${total > 0 ? (v / total * 100).toFixed(1) : '0.0'}%</span>
     </div>`).join('');
+}
+
+// ─── Per-profile 股票類型圓餅圖 ───────────────────────────────────────────────
+function renderProfileStockTypeChart(pid) {
+  const p = getProfile(pid);
+  if (!p) return;
+  const canvas = document.getElementById(`profileStockTypeChart-${pid}`);
+  if (!canvas) return;
+
+  const totals = { tw_etf: 0, tw_stock_ind: 0, us_etf: 0, us_stock_ind: 0 };
+  p.holdings.forEach(h => {
+    if (h.category === 'tw_stock') {
+      if (h.isEtf) totals.tw_etf += getHoldingValueTWD(h);
+      else totals.tw_stock_ind += getHoldingValueTWD(h);
+    } else if (h.category === 'us_stock') {
+      if (h.isEtf) totals.us_etf += getHoldingValueTWD(h);
+      else totals.us_stock_ind += getHoldingValueTWD(h);
+    }
+  });
+
+  const total   = Object.values(totals).reduce((a, b) => a + b, 0);
+  const entries = Object.entries(totals).filter(([, v]) => v > 0);
+  const legendEl = document.getElementById(`profile-stocktype-legend-${pid}`);
+
+  if (profileStockTypeCharts[pid]) profileStockTypeCharts[pid].destroy();
+
+  if (entries.length === 0) {
+    if (legendEl) legendEl.innerHTML = '<div style="color:#94a3b8;font-size:0.85rem;text-align:center;padding:1rem">台股/美股尚無資料</div>';
+    return;
+  }
+
+  profileStockTypeCharts[pid] = new Chart(canvas.getContext('2d'), {
+    type: 'doughnut',
+    data: {
+      labels: entries.map(([k]) => STOCK_TYPE_LABELS[k]),
+      datasets: [{
+        data:            entries.map(([, v]) => v),
+        backgroundColor: entries.map(([k]) => STOCK_TYPE_COLORS[k]),
+        borderColor:     '#f3f1ee',
+        borderWidth:     3,
+        hoverOffset:     6,
+      }]
+    },
+    options: {
+      responsive: true,
+      cutout: '66%',
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: 'rgba(28,28,30,0.85)',
+          titleColor: '#fff',
+          bodyColor: '#e5e5ea',
+          cornerRadius: 8,
+          padding: 10,
+          callbacks: { label: ctx => ` ${formatTWD(ctx.raw)} (${total > 0 ? (ctx.raw / total * 100).toFixed(1) : 0}%)` }
+        }
+      }
+    }
+  });
+
+  if (legendEl) {
+    legendEl.innerHTML = entries.map(([k, v]) => `
+      <div class="legend-item">
+        <div class="legend-left"><div class="legend-dot" style="background:${STOCK_TYPE_COLORS[k]}"></div><span>${STOCK_TYPE_LABELS[k]}</span></div>
+        <span class="legend-pct">${total > 0 ? (v / total * 100).toFixed(1) : '0.0'}%</span>
+      </div>`).join('');
+  }
+}
+
+function switchProfileChartTab(pid, tab) {
+  document.getElementById(`pchart-view-category-${pid}`).style.display  = tab === 'category'  ? '' : 'none';
+  document.getElementById(`pchart-view-stocktype-${pid}`).style.display = tab === 'stocktype' ? '' : 'none';
+  document.getElementById(`pchart-tab-category-${pid}`).classList.toggle('active',  tab === 'category');
+  document.getElementById(`pchart-tab-stocktype-${pid}`).classList.toggle('active', tab === 'stocktype');
 }
 
 // ─── Per-profile 歷史紀錄 ─────────────────────────────────────────────────────
