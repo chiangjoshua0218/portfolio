@@ -246,6 +246,39 @@ function applyConfig(config) {
     if (!p.targetAllocations)   p.targetAllocations = { tw_stock: 0, us_stock: 0, cash: 0, bond: 0, crypto: 0 };
     if (!p.historicalRecords)   p.historicalRecords = [];
   });
+  migrateIsEtf();
+}
+
+// ─── Migration：自動標記已知 ETF ──────────────────────────────────────────────
+// 只對尚未設定 isEtf 的持股執行（新加持股不受影響）
+const US_ETF_SYMBOLS = new Set([
+  'VT','VTI','VOO','VEA','VWO','VIG','VYM','VNQ','BND','BNDW',
+  'SPY','IVV','IWM','QQQ','DIA','GLD','SLV','TLT','AGG',
+  'IBIT','FBTC','ARKK','SCHD','JEPI','JEPQ','QYLD',
+  '00757',
+]);
+
+function isTWEtfSymbol(symbol) {
+  // 台灣 ETF：全數字、長度 4~6 碼、以 '0' 開頭（如 0050, 0056, 00878, 006208）
+  return /^0\d{3,5}$/.test(symbol);
+}
+
+function migrateIsEtf() {
+  let changed = false;
+  profiles.forEach(p => {
+    p.holdings.forEach(h => {
+      if (h.isEtf !== undefined) return; // 已設定過，跳過
+      const sym = (h.symbol || '').toUpperCase();
+      if (h.category === 'tw_stock' && isTWEtfSymbol(sym)) {
+        h.isEtf = true; changed = true;
+      } else if (h.category === 'us_stock' && US_ETF_SYMBOLS.has(sym)) {
+        h.isEtf = true; changed = true;
+      } else if (h.category === 'tw_stock' || h.category === 'us_stock') {
+        h.isEtf = false; changed = true;
+      }
+    });
+  });
+  if (changed) saveData();
 }
 
 function renderAll() {
