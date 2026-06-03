@@ -1,4 +1,4 @@
-const VERSION = '3.5.2';
+const VERSION = '3.5.3';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -2127,6 +2127,8 @@ function switchChartTab(tab) {
   document.getElementById('chart-view-stocktype').style.display = tab === 'stocktype' ? '' : 'none';
   document.getElementById('chart-tab-category').classList.toggle('active',  tab === 'category');
   document.getElementById('chart-tab-stocktype').classList.toggle('active', tab === 'stocktype');
+  if (tab === 'category'  && chart)          chart.resize();
+  if (tab === 'stocktype' && stockTypeChart) stockTypeChart.resize();
 }
 
 // ─── Per-profile 圓餅圖 ───────────────────────────────────────────────────────
@@ -2249,6 +2251,8 @@ function switchProfileChartTab(pid, tab) {
   document.getElementById(`pchart-view-stocktype-${pid}`).style.display = tab === 'stocktype' ? '' : 'none';
   document.getElementById(`pchart-tab-category-${pid}`).classList.toggle('active',  tab === 'category');
   document.getElementById(`pchart-tab-stocktype-${pid}`).classList.toggle('active', tab === 'stocktype');
+  if (tab === 'category'  && profileCharts[pid])          profileCharts[pid].resize();
+  if (tab === 'stocktype' && profileStockTypeCharts[pid]) profileStockTypeCharts[pid].resize();
 }
 
 // ─── Per-profile 歷史紀錄 ─────────────────────────────────────────────────────
