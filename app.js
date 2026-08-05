@@ -592,6 +592,7 @@ function addProfile() {
     name: name.trim(),
     holdings: [],
     targetAllocations: { tw_stock: 0, us_stock: 0, cash: 0, bond: 0, crypto: 0 },
+    historicalRecords: [],
   });
   holdingsSortBy[id] = 'none';
   saveData();
@@ -946,7 +947,7 @@ function renderProfileBreakdown() {
     };
 
     return `<div class="pbd-row">
-      <div class="pbd-profile-name">${p.name}</div>
+      <div class="pbd-profile-name">${escHtml(p.name)}</div>
       <div class="pbd-total">
         <div class="pbd-total-value">${formatTWD(total)}</div>
         ${totalChangeHtml ? `<div class="pbd-total-change">${totalChangeHtml}</div>` : ''}
@@ -1201,6 +1202,8 @@ function saveEdit() {
   if (!p) return;
   const h = p.holdings.find(x => x.id === holdingId);
   if (!h) return;
+
+  if (isNaN(qty) || qty < 0) { alert('請輸入有效數量'); return; }
 
   const costPrice   = parseFloat(document.getElementById('edit-cost-price').value) || null;
 

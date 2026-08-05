@@ -451,13 +451,6 @@ header h1 {
   color: #1c1c1e;
 }
 
-.btn-danger {
-  background: #fee2e2;
-  color: #991b1b;
-  border: 1px solid rgba(153, 27, 27, 0.3);
-}
-.btn-danger:hover { background: #fecaca; }
-
 .btn-link {
   background: none;
   border: none;
