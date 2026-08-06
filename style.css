@@ -671,12 +671,6 @@ header h1 {
   margin-top: 2px;
   font-weight: 500;
 }
-.hblock-ma {
-  font-size: 0.66rem;
-  color: rgba(60, 60, 67, 0.65);
-  margin-top: 3px;
-  line-height: 1.5;
-}
 .hblock-price-detail {
   font-size: 0.7rem;
   color: rgba(60, 60, 67, 0.65);
@@ -1228,10 +1222,9 @@ header h1 {
   .hblock-item .hblock-price-detail { font-size: 0.68rem; }
   .hblock-item .hblock-change { font-size: 0.7rem; }
 
-  /* 損益 / 月線：預設隱藏，點卡片展開 */
-  .hblock-pnl, .hblock-ma { display: none; }
-  .hblock-item.expanded .hblock-pnl,
-  .hblock-item.expanded .hblock-ma { display: block; }
+  /* 損益：預設隱藏，點卡片展開 */
+  .hblock-pnl { display: none; }
+  .hblock-item.expanded .hblock-pnl { display: block; }
   .hblock-item[data-expandable]::after {
     content: '⋯'; font-size: 0.6rem; color: rgba(60, 60, 67, 0.5); align-self: flex-end;
   }

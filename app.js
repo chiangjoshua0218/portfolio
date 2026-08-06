@@ -1,4 +1,4 @@
-const VERSION = '3.5.3';
+const VERSION = '3.5.4';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -36,6 +36,21 @@ const STOCK_TYPE_COLORS = {
   tw_stock_ind: '#a3c0ff',
   us_etf:       '#3eba74',
   us_stock_ind: '#90dbb0',
+};
+
+// 台灣掛牌但底層資產為美股的 ETF（類別應設為「美股」，報價來源設為「台股」）
+const TW_OVERSEAS_ETF_MAP = {
+  '00757': 'us_stock',  // 統一FANG+
+  '00662': 'us_stock',  // 富邦NASDAQ
+  '00646': 'us_stock',  // 元大S&P500
+  '00670L': 'us_stock', // 富邦NASDAQ正2
+  '00671R': 'us_stock', // 富邦NASDAQ反1
+  '00637L': 'us_stock', // 元大S&P500正2
+  '00638R': 'us_stock', // 元大S&P500反1
+  '00830': 'us_stock',  // 國泰費城半導體
+  '00858': 'us_stock',  // 永豐美國500大
+  '00893': 'us_stock',  // 國泰智能電動車
+  '00887': 'us_stock',  // 國泰智慧電動車
 };
 
 // ─── 狀態 ────────────────────────────────────────────────────────────────────
@@ -1264,6 +1279,7 @@ function onCategoryChange(pid) {
     if (etfGroup) etfGroup.style.display = '';
     qtyLabel.textContent           = '數量（股）';
     symbolHint.textContent         = '（如：2330、0050、006208）';
+    onSymbolInput(pid);
   } else if (cat === 'bond') {
     symbolGroup.style.display      = '';
     manualPriceGroup.style.display = '';
@@ -1272,6 +1288,30 @@ function onCategoryChange(pid) {
     qtyLabel.textContent           = '本金金額 / 數量（股/張）';
     symbolHint.textContent         = '（如：00679B、TLT；直購/定存債請留空）';
   }
+}
+
+// ─── 台掛牌境外 ETF 提示 ─────────────────────────────────────────────────────
+function onSymbolInput(suffix) {
+  const catEl  = document.getElementById(`holding-category-${suffix}`);
+  const symEl  = document.getElementById(`holding-symbol-${suffix}`);
+  const hintEl = document.getElementById(`symbol-hint-${suffix}`);
+  if (!catEl || !symEl || !hintEl) return;
+  if (catEl.value !== 'tw_stock') return;
+  const sym    = symEl.value.trim().toUpperCase();
+  const market = TW_OVERSEAS_ETF_MAP[sym];
+  if (market) {
+    hintEl.innerHTML = `台掛牌境外 ETF，<button type="button" class="btn-link" onclick="applyOverseasEtfSuggestion('${suffix}','${market}')">建議改為「美股」類別</button>`;
+  }
+}
+
+function applyOverseasEtfSuggestion(suffix, market) {
+  const catEl   = document.getElementById(`holding-category-${suffix}`);
+  const fetchEl = document.getElementById(`holding-fetch-as-${suffix}`);
+  if (catEl)   catEl.value   = market;
+  if (fetchEl) fetchEl.value = 'tw_stock';
+  onCategoryChange(suffix);
+  const hintEl = document.getElementById(`symbol-hint-${suffix}`);
+  if (hintEl) hintEl.textContent = '✓ 已設為美股、報價從台股市場抓取';
 }
 
 // ─── 排序 ────────────────────────────────────────────────────────────────────
@@ -1371,36 +1411,16 @@ function renderHoldings(pid) {
         const color = pnl.pnlTWD > 0 ? '#22c55e' : pnl.pnlTWD < 0 ? '#ef4444' : '#94a3b8';
         pnlHtml = `<div class="hblock-pnl" style="color:${color}"><span class="hblock-label">報酬</span> ${sign}${pnl.pnlPct.toFixed(2)}% (${sign}${formatTWD(pnl.pnlTWD)})</div>`;
       }
-      // 月線/季線乖離
-      let maHtml = '';
-      if (h.ma20 != null || h.ma60 != null) {
-        const fmtV = v => h.currency === 'USD'
-          ? `$${v.toFixed(2)}`
-          : `NT$${Math.round(v).toLocaleString()}`;
-        const biasPart = (bias) => {
-          if (bias == null) return '';
-          const s = bias >= 0 ? '+' : '';
-          const c = Math.abs(bias) > 5
-            ? (bias > 0 ? '#f59e0b' : '#38bdf8')
-            : (bias >= 0 ? '#94a3b8' : '#94a3b8');
-          return ` <span style="color:${c}">${s}${bias.toFixed(1)}%</span>`;
-        };
-        const parts = [];
-        if (h.ma20 != null) parts.push(`<span class="hblock-label">月線</span> ${fmtV(h.ma20)}${biasPart(h.bias20)}`);
-        if (h.ma60 != null) parts.push(`<span class="hblock-label">季線</span> ${fmtV(h.ma60)}${biasPart(h.bias60)}`);
-        maHtml = `<div class="hblock-ma">${parts.join('<br>')}</div>`;
-      }
       const displayValue = cat === 'debt'
         ? `<span style="color:#f87171">${formatTWD(valueTWD)}</span>` // 負值（如 -500,000）
         : noPrice ? '<span style="color:#475569;font-size:0.72rem">尚無價格</span>' : formatTWD(valueTWD);
-      const hasDetail = !!(pnlHtml || maHtml);
+      const hasDetail = !!pnlHtml;
       return `<div class="hblock-item"${hasDetail ? ' data-expandable' : ''}>
         <div class="hblock-name">${escHtml(h.name)}${h.symbol && h.symbol !== h.name ? `<div class="holding-symbol">${escHtml(h.symbol)}</div>` : ''}</div>
         <div class="hblock-value">${displayValue}</div>
         ${priceDetailHtml}
         ${changeHtml}
         ${pnlHtml}
-        ${maHtml}
       </div>`;
     }).join('');
 
@@ -1457,7 +1477,6 @@ async function refreshAllPrices() {
     renderAll();
 
     document.getElementById('last-updated').textContent = `最後更新：${new Date().toLocaleString('zh-TW')}`;
-    refreshAllTechnicals();
   } finally {
     isRefreshing = false;
   }
@@ -1596,69 +1615,6 @@ async function fetchViaYahoo(symbol, holding, currency) {
       if (prev) holding.previousClose = prev;
     }
   } catch {}
-}
-
-// ─── 技術指標（MA20/MA60/乖離率）────────────────────────────────────────────
-function calcMA(closes, period) {
-  if (closes.length < period) return null;
-  const slice = closes.slice(-period);
-  return slice.reduce((a, b) => a + b, 0) / period;
-}
-
-async function fetchHistoryViaYahoo(symbol) {
-  const CACHE_TTL = 6 * 60 * 60 * 1000;
-  const cacheKey  = `hist_${symbol}`;
-  try {
-    const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
-    if (cached && Date.now() - cached.ts < CACHE_TTL && cached.closes?.length) {
-      return cached.closes;
-    }
-  } catch {}
-
-  try {
-    const encoded = encodeURIComponent(symbol);
-    const res = await fetch(`${CF_WORKER_URL}/?symbol=${encoded}&market=us&range=4mo`);
-    if (!res.ok) return null;
-    const data   = await res.json();
-    const closes = data?.chart?.result?.[0]?.indicators?.quote?.[0]?.close;
-    if (closes?.length) {
-      const filtered = closes.filter(v => v != null);
-      try { localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), closes: filtered })); } catch {}
-      return filtered;
-    }
-  } catch {}
-  return null;
-}
-
-async function fetchTechnicalsForHolding(h) {
-  const fetchCat = getEffectiveFetchCat(h);
-  if (fetchCat === 'crypto' || h.category === 'cash') return;
-  if (!h.currentPrice) return;
-
-  let symbol = h.symbol;
-  if (fetchCat === 'tw_stock') {
-    symbol = symbol + (twMarketCache[symbol] === 'otc' ? '.TWO' : '.TW');
-  }
-
-  const closes = await fetchHistoryViaYahoo(symbol);
-  if (!closes || closes.length < 5) return;
-
-  const ma20 = calcMA(closes, 20);
-  const ma60 = calcMA(closes, 60);
-  h.ma20   = ma20;
-  h.ma60   = ma60;
-  h.bias20 = (ma20 && h.currentPrice) ? (h.currentPrice - ma20) / ma20 * 100 : null;
-  h.bias60 = (ma60 && h.currentPrice) ? (h.currentPrice - ma60) / ma60 * 100 : null;
-}
-
-async function refreshAllTechnicals() {
-  const techHoldings = profiles.flatMap(p => p.holdings).filter(h =>
-    !h.manualPrice && h.category !== 'cash' && getEffectiveFetchCat(h) !== 'crypto'
-  );
-  for (const h of techHoldings) await fetchTechnicalsForHolding(h);
-  // 只更新顯示，不呼叫 renderAll()（避免觸發 refreshAllPrices 造成無限迴圈）
-  renderOverview();
-  renderProfilePanels();
 }
 
 // 加密貨幣批次：CoinGecko
