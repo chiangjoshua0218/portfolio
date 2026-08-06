@@ -1,4 +1,4 @@
-const VERSION = '3.5.4';
+const VERSION = '3.5.5';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -210,6 +210,16 @@ async function init() {
   setInterval(() => {
     if (isTWMisAvailable()) refreshAllPrices();
   }, 90 * 1000);
+
+  // Gist 多人共用：切回頁面或每 3 分鐘自動拉取最新資料
+  if (gistConfigured()) {
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') pullFromGist();
+    });
+    setInterval(() => {
+      if (document.visibilityState === 'visible') pullFromGist();
+    }, 3 * 60 * 1000);
+  }
 
   // 手機：點擊類別 header 展開/收合，點擊個股展開細節
   document.addEventListener('click', e => {
@@ -505,6 +515,24 @@ function clearGistSettings() {
   localStorage.removeItem('gist_id');
   closeGistModal();
   updateStorageInfo();
+}
+
+async function pullFromGist(manual = false) {
+  if (!manual) {
+    // 自動拉取：有 modal 開著或處於編輯模式時跳過，避免打斷操作
+    const modalIds = ['edit-modal', 'add-holding-modal', 'hist-modal'];
+    if (modalIds.some(id => document.getElementById(id)?.style.display === 'flex')) return;
+    if (Object.values(holdingsEditMode).some(Boolean)) return;
+    if (Object.values(targetEditMode).some(Boolean)) return;
+  }
+  const loaded = await loadFromGist();
+  if (loaded) {
+    renderAll();
+    document.getElementById('last-updated').textContent = `Gist 同步：${new Date().toLocaleString('zh-TW')}`;
+  } else if (manual) {
+    alert('拉取失敗，請確認 Token 與 Gist ID 設定正確');
+  }
+  if (manual) closeGistModal();
 }
 
 // ─── 匯出 / 匯入設定檔 ────────────────────────────────────────────────────────
