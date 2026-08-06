@@ -1914,71 +1914,6 @@ function onTargetEditChange(pid) {
   if (barEl) barEl.className = 'tcard-sum' + (sum === 100 ? ' perfect' : sum > 100 ? ' over' : '');
 }
 
-function updateTargetTotalBar(pid) {
-  const p = getProfile(pid);
-  if (!p) return;
-  const sum = TARGET_CATS.reduce((s, c) => s + (p.targetAllocations[c] || 0), 0);
-  const sumEl = document.getElementById(`target-sum-${pid}`);
-  const barEl = document.getElementById(`target-total-bar-${pid}`);
-  if (sumEl) sumEl.textContent = sum;
-  if (barEl) barEl.className = 'target-total-bar' + (sum === 100 ? ' perfect' : sum > 100 ? ' over' : '');
-}
-
-function onTargetChange(pid) {
-  const p = getProfile(pid);
-  if (!p) return;
-  TARGET_CATS.forEach(c => {
-    p.targetAllocations[c] = parseFloat(document.getElementById(`target-${c}-${pid}`)?.value) || 0;
-  });
-  updateTargetTotalBar(pid);
-  saveData();
-  renderAllocationComparison(pid);
-}
-
-function renderAllocationComparison(pid) {
-  const container = document.getElementById(`allocation-comparison-${pid}`);
-  if (!container) return;
-  const p = getProfile(pid);
-  if (!p) return;
-
-  const totals = Object.fromEntries(TARGET_CATS.map(c => [c, 0]));
-  p.holdings.forEach(h => { totals[h.category] = (totals[h.category] || 0) + getHoldingValueTWD(h); });
-  const grandTotal = Object.values(totals).reduce((a, b) => a + b, 0);
-  const targetSum  = TARGET_CATS.reduce((s, c) => s + (p.targetAllocations[c] || 0), 0);
-
-  if (grandTotal === 0 || targetSum === 0) { container.innerHTML = ''; return; }
-
-  const cats = TARGET_CATS.filter(c => totals[c] > 0 || (p.targetAllocations[c] || 0) > 0);
-  if (!cats.length) { container.innerHTML = ''; return; }
-
-  const header = `<div class="comparison-row comparison-header">
-    <span>類別</span><span style="text-align:right">目前%</span><span>目標</span><span style="text-align:right">調整</span>
-  </div>`;
-
-  const rows = cats.map(c => {
-    const cur    = totals[c];
-    const curPct = grandTotal > 0 ? cur / grandTotal * 100 : 0;
-    const tgtPct = p.targetAllocations[c] || 0;
-    const diff   = grandTotal * tgtPct / 100 - cur;
-    let adjHtml;
-    if (Math.abs(diff) < 100) {
-      adjHtml = `<span class="comparison-adjust zero">±0</span>`;
-    } else if (diff > 0) {
-      adjHtml = `<span class="comparison-adjust buy">+${formatTWD(diff)}</span>`;
-    } else {
-      adjHtml = `<span class="comparison-adjust sell">-${formatTWD(Math.abs(diff))}</span>`;
-    }
-    return `<div class="comparison-row">
-      <span>${CATEGORY_LABELS[c]}</span>
-      <span style="text-align:right;color:#94a3b8">${curPct.toFixed(1)}%</span>
-      <span style="text-align:right;color:#94a3b8">${tgtPct}%</span>
-      ${adjHtml}
-    </div>`;
-  }).join('');
-
-  container.innerHTML = header + rows;
-}
-
 // ─── 渲染：資產配置圓餅圖（aggregate ALL profiles）──────────────────────────
 function renderChart() {
   const allHoldings = profiles.flatMap(p => p.holdings);
@@ -2283,27 +2218,6 @@ function saveProfileAssets(pid) {
   renderProfileHistoricalChart(pid);
 }
 
-function addProfileHistoricalRecord(pid) {
-  const p = getProfile(pid);
-  if (!p) return;
-  const dateVal = document.getElementById(`phist-date-${pid}`).value;
-  const value   = parseFloat(document.getElementById(`phist-value-${pid}`).value);
-  if (!dateVal || isNaN(value) || value < 0) { alert('請輸入有效的日期和資產總值'); return; }
-  const existing = p.historicalRecords.findIndex(r => r.date === dateVal);
-  if (existing >= 0) {
-    if (!confirm(`${dateVal} 已有紀錄，是否覆蓋？`)) return;
-    p.historicalRecords[existing].value = value;
-  } else {
-    p.historicalRecords.push({ date: dateVal, value });
-  }
-  p.historicalRecords.sort((a, b) => a.date.localeCompare(b.date));
-  document.getElementById(`phist-date-${pid}`).value  = '';
-  document.getElementById(`phist-value-${pid}`).value = '';
-  saveData();
-  renderProfileHistoricalRecordsList(pid);
-  renderProfileHistoricalChart(pid);
-}
-
 function deleteProfileHistoricalRecord(pid, date) {
   const p = getProfile(pid);
   if (!p) return;
@@ -2457,32 +2371,6 @@ function saveCurrentAssets() {
   renderHistoricalChart();
 }
 
-function addHistoricalRecord() {
-  const dateVal = document.getElementById('historical-date').value;
-  const value   = parseFloat(document.getElementById('historical-value').value);
-
-  if (!dateVal || isNaN(value) || value < 0) {
-    alert('請輸入有效的日期和資產總值');
-    return;
-  }
-
-  const existing = historicalRecords.findIndex(r => r.date === dateVal);
-  if (existing >= 0) {
-    if (!confirm(`${dateVal} 已有紀錄，是否覆蓋？`)) return;
-    historicalRecords[existing].value = value;
-  } else {
-    historicalRecords.push({ date: dateVal, value });
-  }
-
-  historicalRecords.sort((a, b) => a.date.localeCompare(b.date));
-  document.getElementById('historical-date').value  = '';
-  document.getElementById('historical-value').value = '';
-
-  saveData();
-  renderHistoricalRecordsList();
-  renderHistoricalChart();
-}
-
 function getNowRecord() {
   const today = new Date().toISOString().split('T')[0];
   return { date: today, value: getCurrentTotal(), isNow: true };
@@ -2608,8 +2496,6 @@ function renderHistoricalRecordsList() {
       </div>`;
   }).join('');
 }
-
-function updateGrowthRates() {} // 已合併至 renderHistoricalRecordsList
 
 function deleteHistoricalRecord(date) {
   if (!confirm(`確定要刪除 ${date} 的紀錄？`)) return;
