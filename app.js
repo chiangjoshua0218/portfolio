@@ -1,4 +1,4 @@
-const VERSION = '3.5.5';
+const VERSION = '3.5.6';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -78,6 +78,9 @@ let gistToken      = localStorage.getItem('gist_token') || '';
 let gistId         = localStorage.getItem('gist_id')    || '';
 let gistSaveTimer  = null;
 const GIST_FILE    = 'portfolio.json';
+// 記錄哪些 profile 在這次 saveData 前被使用者修改過（用於 Gist merge）
+const _dirtyPids   = new Set();
+function markProfileDirty(pid) { _dirtyPids.add(pid); }
 
 // ─── Profile helpers ──────────────────────────────────────────────────────────
 function getProfile(id) {
@@ -423,6 +426,13 @@ function loadFromLocalStorage() {
 }
 
 function saveData() {
+  // 更新這次被使用者修改的 profile 時間戳，讓 Gist merge 時能判斷誰更新
+  const now = Date.now();
+  for (const pid of _dirtyPids) {
+    const p = profiles.find(pr => pr.id === pid);
+    if (p) p.lastModified = now;
+  }
+  _dirtyPids.clear();
   const config = { version: 2, usdRate, fxRates, rateSnapshot, historicalRecords, profiles };
   localStorage.setItem('portfolio_v2', JSON.stringify(config));
   if (fileHandle) {
@@ -452,13 +462,24 @@ async function loadFromGist() {
       if (found) { id = found.id; gistId = id; localStorage.setItem('gist_id', id); }
     }
     if (!id) return false;
-    const res = await fetch(`https://api.github.com/gists/${id}?_=${Date.now()}`, { headers, cache: 'no-cache' });
-    if (!res.ok) return false;
-    const data = await res.json();
-    const content = data.files?.[GIST_FILE]?.content;
-    if (content) { applyConfig(JSON.parse(content)); return true; }
+    const remote = await fetchGistConfig(id);
+    if (remote) { applyConfig(remote); return true; }
     return false;
   } catch (e) { console.warn('Gist 讀取失敗:', e); return false; }
+}
+
+// 單純拉取 Gist 原始 JSON，不 applyConfig
+async function fetchGistConfig(id) {
+  const targetId = id || gistId;
+  if (!gistToken || !targetId) return null;
+  const headers = { Authorization: `Bearer ${gistToken}`, Accept: 'application/vnd.github+json' };
+  try {
+    const res = await fetch(`https://api.github.com/gists/${targetId}?_=${Date.now()}`, { headers, cache: 'no-cache' });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const content = data.files?.[GIST_FILE]?.content;
+    return content ? JSON.parse(content) : null;
+  } catch { return null; }
 }
 
 async function saveToGist(config) {
@@ -468,6 +489,28 @@ async function saveToGist(config) {
     Accept: 'application/vnd.github+json',
     'Content-Type': 'application/json',
   };
+
+  // 寫入前先拉 remote，做 per-profile merge（以 lastModified 判斷誰更新）
+  // 避免 A 裝置存舊版 YU CHUN 資料，覆蓋掉 B 裝置剛更新的版本
+  if (gistId) {
+    const remote = await fetchGistConfig();
+    if (remote?.profiles) {
+      const remoteById = Object.fromEntries(remote.profiles.map(p => [p.id, p]));
+      const localIds   = new Set(config.profiles.map(p => p.id));
+      const merged     = config.profiles.map(local => {
+        const rem = remoteById[local.id];
+        if (!rem) return local; // 本地新增的 profile，直接保留
+        // 以 lastModified 較大者為準
+        return (rem.lastModified || 0) > (local.lastModified || 0) ? rem : local;
+      });
+      // 保留 remote 中本地沒有的 profile（其他人新增的）
+      for (const rp of remote.profiles) {
+        if (!localIds.has(rp.id)) merged.push(rp);
+      }
+      config = { ...config, profiles: merged };
+    }
+  }
+
   const body = { files: { [GIST_FILE]: { content: JSON.stringify(config, null, 2) } } };
   try {
     if (gistId) {
@@ -636,6 +679,7 @@ function addProfile() {
     holdings: [],
     targetAllocations: { tw_stock: 0, us_stock: 0, cash: 0, bond: 0, crypto: 0 },
     historicalRecords: [],
+    lastModified: Date.now(),
   });
   holdingsSortBy[id] = 'none';
   saveData();
@@ -665,6 +709,7 @@ function renameProfile(pid) {
   const newName = prompt('新名稱：', p.name);
   if (!newName?.trim() || newName.trim() === p.name) return;
   p.name = newName.trim();
+  markProfileDirty(pid);
   saveData();
   renderTabs();
 }
@@ -1047,6 +1092,7 @@ function addHolding(e, profileId, formSuffix) {
   };
 
   p.holdings.push(holding);
+  markProfileDirty(profileId);
   saveData();
   renderProfilePanel(profileId);
   renderOverview();
@@ -1061,6 +1107,7 @@ function addHolding(e, profileId, formSuffix) {
   // 若需要自動抓價，立即抓取這一筆
   if (!manualPrice && category !== 'cash' && category !== 'debt') {
     fetchPriceForHolding(holding).then(() => {
+      markProfileDirty(profileId);
       saveData();
       renderProfilePanel(profileId);
       renderOverview();
@@ -1118,6 +1165,7 @@ function deleteHoldingInEdit(holdingId, pid) {
   const p = getProfile(pid);
   if (!p) return;
   p.holdings = p.holdings.filter(h => h.id !== holdingId);
+  markProfileDirty(pid);
   saveData();
   renderHoldings(pid);
   renderOverview();
@@ -1129,6 +1177,7 @@ function deleteHolding(holdingId, profileId) {
   const p = getProfile(profileId);
   if (!p) return;
   p.holdings = p.holdings.filter(h => h.id !== holdingId);
+  markProfileDirty(profileId);
   saveData();
   renderProfilePanel(profileId);
   renderOverview();
@@ -1213,6 +1262,7 @@ function histModalAddManual() {
       p.historicalRecords.push({ date: dateVal, value });
     }
     p.historicalRecords.sort((a, b) => a.date.localeCompare(b.date));
+    markProfileDirty(pid);
     saveData();
     renderProfileHistoricalRecordsList(pid);
     renderProfileHistoricalChart(pid);
@@ -1262,6 +1312,7 @@ function saveEdit() {
   h.manualPrice = manualPrice;
   if (manualPrice) h.currentPrice = manualPrice;
 
+  markProfileDirty(profileId);
   saveData();
   renderProfilePanel(profileId);
   renderOverview();
@@ -1883,6 +1934,7 @@ function saveTargetEdit(pid) {
     const el = document.getElementById(`target-edit-${c}-${pid}`);
     p.targetAllocations[c] = el ? parseFloat(el.value) || 0 : 0;
   });
+  markProfileDirty(pid);
   saveData();
   cancelTargetEdit(pid);
 }
@@ -2197,6 +2249,7 @@ function saveProfileAssets(pid) {
     p.historicalRecords.push({ date: today, value: total });
   }
   p.historicalRecords.sort((a, b) => a.date.localeCompare(b.date));
+  markProfileDirty(pid);
   saveData();
   renderProfileHistoricalRecordsList(pid);
   renderProfileHistoricalChart(pid);
@@ -2207,6 +2260,7 @@ function deleteProfileHistoricalRecord(pid, date) {
   if (!p) return;
   if (!confirm(`確定要刪除 ${date} 的紀錄？`)) return;
   p.historicalRecords = p.historicalRecords.filter(r => r.date !== date);
+  markProfileDirty(pid);
   saveData();
   renderProfileHistoricalRecordsList(pid);
   renderProfileHistoricalChart(pid);
