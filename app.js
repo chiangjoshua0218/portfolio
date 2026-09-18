@@ -1,4 +1,4 @@
-const VERSION = '3.5.8';
+const VERSION = '3.5.9';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -544,13 +544,22 @@ async function saveGistSettings() {
   closeGistModal();
   updateStorageInfo();
   if (!token) return;
-  const loaded = await loadFromGist();
+
+  // 先把本地資料快照（loadFromGist 會呼叫 applyConfig 覆蓋 global state，必須在此之前保存）
+  const localConfig = { version: 2, usdRate, fxRates, rateSnapshot, historicalRecords,
+                        profiles: JSON.parse(JSON.stringify(profiles)) };
+
+  const loaded = await loadFromGist(); // 找到 gistId，並用 remote 覆蓋 global state
   if (loaded) {
-    renderAll(); refreshAllPrices();
+    // 把本地快照 merge 進 Gist（saveToGist 會 fetch remote + per-profile merge + 寫入）
+    await saveToGist(localConfig);
+    // 再拉一次取得 merge 後的最終狀態
+    await loadFromGist();
   } else {
-    // Gist 沒有舊資料，把現有資料推上去
-    await saveToGist({ version: 2, usdRate, fxRates, rateSnapshot, historicalRecords, profiles });
+    // Gist 無舊資料，把本地資料推上去
+    await saveToGist(localConfig);
   }
+  renderAll(); refreshAllPrices();
   updateStorageInfo();
 }
 
@@ -1157,6 +1166,7 @@ function saveHoldingsEdit(pid) {
     if (costEl) h.costPrice = parseFloat(costEl.value) || null;
     if (isEtfEl && (h.category === 'tw_stock' || h.category === 'us_stock')) h.isEtf = isEtfEl.checked;
   });
+  markProfileDirty(pid);
   saveData();
   cancelHoldingsEdit(pid);
   renderOverview();
