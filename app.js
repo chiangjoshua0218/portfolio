@@ -1,4 +1,4 @@
-const VERSION = '3.5.7';
+const VERSION = '3.5.8';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -425,7 +425,7 @@ function loadFromLocalStorage() {
   } catch {}
 }
 
-function saveData() {
+function saveData(skipGist = false) {
   // 更新這次被使用者修改的 profile 時間戳，讓 Gist merge 時能判斷誰更新
   const now = Date.now();
   for (const pid of _dirtyPids) {
@@ -438,7 +438,9 @@ function saveData() {
   if (fileHandle) {
     writeConfigFile(fileHandle, config).catch(e => console.warn('寫入設定檔失敗:', e));
   }
-  if (gistToken) {
+  // skipGist=true 用於股價自動更新：股價屬於 ephemeral 數據，隨時可重新抓取，
+  // 不需寫 Gist，避免與其他裝置的使用者操作產生競態條件覆蓋真實資料。
+  if (gistToken && !skipGist) {
     clearTimeout(gistSaveTimer);
     gistSaveTimer = setTimeout(() => { gistSaveTimer = null; saveToGist(config); }, 0);
   }
@@ -1552,7 +1554,7 @@ async function refreshAllPrices() {
       await fetchViaYahoo(h.symbol, h, 'USD');
     }
 
-    saveData();
+    saveData(true); // 股價為 ephemeral 數據，只存本地，不寫 Gist
     renderAll();
 
     document.getElementById('last-updated').textContent = `最後更新：${new Date().toLocaleString('zh-TW')}`;
