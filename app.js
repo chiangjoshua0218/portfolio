@@ -1,4 +1,4 @@
-const VERSION = '3.5.6';
+const VERSION = '3.5.7';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -440,7 +440,7 @@ function saveData() {
   }
   if (gistToken) {
     clearTimeout(gistSaveTimer);
-    gistSaveTimer = setTimeout(() => saveToGist(config), 0);
+    gistSaveTimer = setTimeout(() => { gistSaveTimer = null; saveToGist(config); }, 0);
   }
 }
 
