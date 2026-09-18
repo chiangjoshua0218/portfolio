@@ -1,4 +1,4 @@
-const VERSION = '3.5.9';
+const VERSION = '3.5.10';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -581,6 +581,13 @@ async function pullFromGist(manual = false) {
   }
   const loaded = await loadFromGist();
   if (loaded) {
+    // await 後再次確認：fetch 期間使用者可能已進入編輯模式，此時不能 renderAll
+    const modalIds = ['edit-modal', 'add-holding-modal', 'hist-modal'];
+    if (!manual && (
+      modalIds.some(id => document.getElementById(id)?.style.display === 'flex') ||
+      Object.values(holdingsEditMode).some(Boolean) ||
+      Object.values(targetEditMode).some(Boolean)
+    )) return;
     renderAll();
     document.getElementById('last-updated').textContent = `Gist 同步：${new Date().toLocaleString('zh-TW')}`;
   } else if (manual) {
