@@ -1,4 +1,4 @@
-const VERSION = '3.5.10';
+const VERSION = '3.5.11';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -1624,7 +1624,7 @@ async function fetchTWStockPrice(holding) {
     const markets = knownMarket ? [knownMarket] : ['tse', 'otc'];
     for (const mkt of markets) {
       try {
-        const res = await fetch(`${CF_WORKER_URL}/?symbol=${symbol}&market=${mkt}`);
+        const res = await fetch(`${CF_WORKER_URL}/?symbol=${symbol}&market=${mkt}`, { cache: 'no-store' });
         if (!res.ok) continue;
         const data  = await res.json();
         const item  = data?.msgArray?.[0];
@@ -1648,7 +1648,7 @@ async function fetchTWStockPrice(holding) {
 
   // 備援策略：TWSE afterTrading API（TSE 股收盤後或週末）
   try {
-    const res = await fetch(`https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?stockNo=${symbol}&response=json`);
+    const res = await fetch(`https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?stockNo=${symbol}&response=json`, { cache: 'no-store' });
     if (res.ok) {
       const json = await res.json();
       if (json.stat === 'OK' && json.data?.length) {
@@ -1697,10 +1697,10 @@ async function fetchUSStocksBatch(usHoldings) {
 async function fetchViaYahoo(symbol, holding, currency) {
   const encoded = encodeURIComponent(symbol);
   try {
-    let res = await fetch(`${CF_WORKER_URL}/?symbol=${encoded}&market=us`);
+    let res = await fetch(`${CF_WORKER_URL}/?symbol=${encoded}&market=us`, { cache: 'no-store' });
     if (res.status === 502 || res.status === 520) {
       await new Promise(r => setTimeout(r, 1500));
-      res = await fetch(`${CF_WORKER_URL}/?symbol=${encoded}&market=us`);
+      res = await fetch(`${CF_WORKER_URL}/?symbol=${encoded}&market=us`, { cache: 'no-store' });
     }
     if (!res.ok) return;
     const data  = await res.json();
@@ -1724,7 +1724,7 @@ async function fetchCryptoBatch(cryptoHoldings) {
   const ids = Object.keys(idMap);
   if (!ids.length) return;
   try {
-    const res  = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids.join(',')}&vs_currencies=usd&include_24hr_change=true`);
+    const res  = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids.join(',')}&vs_currencies=usd&include_24hr_change=true`, { cache: 'no-store' });
     const json = await res.json();
     for (const [coinId, h] of Object.entries(idMap)) {
       const usd = json?.[coinId]?.usd;
@@ -1744,7 +1744,7 @@ async function fetchCryptoBatch(cryptoHoldings) {
 async function fetchCryptoPrice(holding) {
   const coinId = getCoinId(holding.symbol);
   if (!coinId) { console.warn(`找不到幣種 ID：${holding.symbol}`); return; }
-  const res  = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd`);
+  const res  = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd`, { cache: 'no-store' });
   const json = await res.json();
   const usd  = json?.[coinId]?.usd;
   if (usd) { holding.currentPrice = usd; holding.currency = 'USD'; }
