@@ -1,4 +1,4 @@
-const VERSION = '3.5.13';
+const VERSION = '3.5.14';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -1550,14 +1550,15 @@ function getEffectiveFetchCat(h) {
 
 // 並行執行 tasks，最多 concurrency 個同時跑，每完成一筆立即 renderAll
 async function runConcurrent(tasks, concurrency = 3) {
+  if (!tasks.length) return;
   const queue = [...tasks];
   const worker = async () => {
     while (queue.length) {
-      await queue.shift()();
+      try { await queue.shift()(); } catch {}
       renderAll();
     }
   };
-  await Promise.all(Array.from({ length: Math.min(concurrency, tasks.length) }, worker));
+  await Promise.allSettled(Array.from({ length: Math.min(concurrency, tasks.length) }, worker));
 }
 
 async function refreshAllPrices() {
@@ -1575,17 +1576,17 @@ async function refreshAllPrices() {
       /^\d/.test(h.symbol) ? fetchTWStockPrice(h) : fetchViaYahoo(h.symbol, h, 'USD')
     );
     const cryptoTask = async () => {
-      await fetchCryptoBatch(cryptoHoldings);
+      try { await fetchCryptoBatch(cryptoHoldings); } catch {}
       renderAll();
       const fallback = cryptoHoldings.filter(h => !getCoinId(h.symbol));
       for (const h of fallback) {
-        await fetchViaYahoo(h.symbol, h, 'USD');
+        try { await fetchViaYahoo(h.symbol, h, 'USD'); } catch {}
         renderAll();
       }
     };
 
     // 台股、美股、crypto 三類同時開始，各自內部最多 3 concurrent
-    await Promise.all([
+    await Promise.allSettled([
       runConcurrent(twTasks, 3),
       runConcurrent(usTasks, 3),
       cryptoTask(),
