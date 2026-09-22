@@ -1,4 +1,4 @@
-const VERSION = '3.5.12';
+const VERSION = '3.5.13';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -1548,6 +1548,18 @@ function getEffectiveFetchCat(h) {
   return h.fetchAs || (h.category === 'bond' ? (h.currency === 'TWD' ? 'tw_stock' : 'us_stock') : h.category);
 }
 
+// 並行執行 tasks，最多 concurrency 個同時跑，每完成一筆立即 renderAll
+async function runConcurrent(tasks, concurrency = 3) {
+  const queue = [...tasks];
+  const worker = async () => {
+    while (queue.length) {
+      await queue.shift()();
+      renderAll();
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(concurrency, tasks.length) }, worker));
+}
+
 async function refreshAllPrices() {
   if (isRefreshing) return;
   isRefreshing = true;
@@ -1558,18 +1570,26 @@ async function refreshAllPrices() {
     const usHoldings     = allHoldings.filter(h => !h.manualPrice && getEffectiveFetchCat(h) === 'us_stock');
     const cryptoHoldings = allHoldings.filter(h => !h.manualPrice && getEffectiveFetchCat(h) === 'crypto');
 
-    for (const h of twHoldings) {
-      await fetchTWStockPrice(h);
-      await new Promise(r => setTimeout(r, 200)); // 避免連續請求被 Yahoo Finance 限速
-    }
-    await fetchUSStocksBatch(usHoldings);
-    await fetchCryptoBatch(cryptoHoldings);
+    const twTasks = twHoldings.map(h => () => fetchTWStockPrice(h));
+    const usTasks = usHoldings.map(h => () =>
+      /^\d/.test(h.symbol) ? fetchTWStockPrice(h) : fetchViaYahoo(h.symbol, h, 'USD')
+    );
+    const cryptoTask = async () => {
+      await fetchCryptoBatch(cryptoHoldings);
+      renderAll();
+      const fallback = cryptoHoldings.filter(h => !getCoinId(h.symbol));
+      for (const h of fallback) {
+        await fetchViaYahoo(h.symbol, h, 'USD');
+        renderAll();
+      }
+    };
 
-    // 加密貨幣 fallback：不在 CoinGecko map 的 symbol（如 IBIT 等 ETF），改抓美股報價
-    const cryptoFallback = cryptoHoldings.filter(h => !getCoinId(h.symbol));
-    for (const h of cryptoFallback) {
-      await fetchViaYahoo(h.symbol, h, 'USD');
-    }
+    // 台股、美股、crypto 三類同時開始，各自內部最多 3 concurrent
+    await Promise.all([
+      runConcurrent(twTasks, 3),
+      runConcurrent(usTasks, 3),
+      cryptoTask(),
+    ]);
 
     saveData(true); // 股價為 ephemeral 數據，只存本地，不寫 Gist
     renderAll();
@@ -1681,17 +1701,6 @@ async function fetchTWStockPrice(holding) {
   holding.currentPrice = prevPrice;
 }
 
-// 美股抓取
-async function fetchUSStocksBatch(usHoldings) {
-  if (!usHoldings.length) return;
-  for (const h of usHoldings) {
-    if (/^\d/.test(h.symbol)) {
-      await fetchTWStockPrice(h);
-    } else {
-      await fetchViaYahoo(h.symbol, h, 'USD');
-    }
-  }
-}
 
 // Yahoo Finance via CF Worker（美股 / OTC 台股備援）
 async function fetchViaYahoo(symbol, holding, currency) {
