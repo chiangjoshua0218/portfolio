@@ -1,4 +1,4 @@
-const VERSION = '3.5.11';
+const VERSION = '3.5.12';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -1624,7 +1624,7 @@ async function fetchTWStockPrice(holding) {
     const markets = knownMarket ? [knownMarket] : ['tse', 'otc'];
     for (const mkt of markets) {
       try {
-        const res = await fetch(`${CF_WORKER_URL}/?symbol=${symbol}&market=${mkt}`, { cache: 'no-store' });
+        const res = await fetch(`${CF_WORKER_URL}/?symbol=${symbol}&market=${mkt}&_=${Date.now()}`, { cache: 'no-store' });
         if (!res.ok) continue;
         const data  = await res.json();
         const item  = data?.msgArray?.[0];
@@ -1697,10 +1697,11 @@ async function fetchUSStocksBatch(usHoldings) {
 async function fetchViaYahoo(symbol, holding, currency) {
   const encoded = encodeURIComponent(symbol);
   try {
-    let res = await fetch(`${CF_WORKER_URL}/?symbol=${encoded}&market=us`, { cache: 'no-store' });
+    const ts = Date.now();
+    let res = await fetch(`${CF_WORKER_URL}/?symbol=${encoded}&market=us&_=${ts}`, { cache: 'no-store' });
     if (res.status === 502 || res.status === 520) {
       await new Promise(r => setTimeout(r, 1500));
-      res = await fetch(`${CF_WORKER_URL}/?symbol=${encoded}&market=us`, { cache: 'no-store' });
+      res = await fetch(`${CF_WORKER_URL}/?symbol=${encoded}&market=us&_=${Date.now()}`, { cache: 'no-store' });
     }
     if (!res.ok) return;
     const data  = await res.json();
