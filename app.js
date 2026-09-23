@@ -1,4 +1,4 @@
-const VERSION = '3.5.19';
+const VERSION = '3.5.20';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -2357,7 +2357,8 @@ function renderProfileHistoricalChart(pid) {
           data: projPoints,
           borderColor: '#a78bfa', backgroundColor: 'transparent',
           fill: false, tension: 0.3, borderDash: [6, 4], borderWidth: 2,
-          pointRadius: projPoints.map((_, i) => i === 0 ? 0 : 4),
+          segment: { borderDash: () => [6, 4] },
+          pointRadius: 4,
           pointBackgroundColor: '#a78bfa', pointBorderColor: '#fff', pointBorderWidth: 1.5,
           pointHoverRadius: 7, pointHoverBackgroundColor: '#a78bfa',
         },
@@ -2555,7 +2556,8 @@ function renderHistoricalChart() {
           tension: 0.3,
           borderDash: [6, 4],
           borderWidth: 2,
-          pointRadius: projPoints.map((_, i) => i === 0 ? 0 : 4),
+          segment: { borderDash: () => [6, 4] },
+          pointRadius: 4,
           pointBackgroundColor: '#a78bfa',
           pointBorderColor: '#fff',
           pointBorderWidth: 1.5,
