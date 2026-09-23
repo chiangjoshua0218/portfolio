@@ -1,4 +1,4 @@
-const VERSION = '3.5.21';
+const VERSION = '3.5.22';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -586,9 +586,26 @@ async function pullFromGist(manual = false) {
     if (Object.values(holdingsEditMode).some(Boolean)) return;
     if (Object.values(targetEditMode).some(Boolean)) return;
   }
+
+  // 保留記憶體中已抓到的最新股價（Gist 儲存的可能是數天前的舊行情）
+  const freshPrices = {};
+  profiles.forEach(p => p.holdings.forEach(h => {
+    if (h.currentPrice && !h.manualPrice)
+      freshPrices[`${p.id}|${h.symbol}`] = { currentPrice: h.currentPrice, previousClose: h.previousClose };
+  }));
+
   const loaded = await loadFromGist();
   if (loaded) {
-    // await 後再次確認：fetch 期間使用者可能已進入編輯模式，此時不能 renderAll
+    // Gist pull 只同步持倉設定，不應蓋掉記憶體中剛抓的行情
+    profiles.forEach(p => p.holdings.forEach(h => {
+      const snap = freshPrices[`${p.id}|${h.symbol}`];
+      if (snap && !h.manualPrice) {
+        h.currentPrice  = snap.currentPrice;
+        h.previousClose = snap.previousClose;
+      }
+    }));
+
+    // await 後再次確認：fetch 期間使用者可能已進入編輯模式
     const modalIds = ['edit-modal', 'add-holding-modal', 'hist-modal'];
     if (!manual && (
       modalIds.some(id => document.getElementById(id)?.style.display === 'flex') ||
