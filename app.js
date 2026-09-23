@@ -1,4 +1,4 @@
-const VERSION = '3.5.17';
+const VERSION = '3.5.18';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -2326,16 +2326,20 @@ function renderProfileHistoricalChart(pid) {
     projPoints.push({ x: d.getTime(), y: nowRec.value * Math.pow(1 + projectionRate / 100, y) });
   }
 
-  const minYear   = new Date(allRecords[0].date).getFullYear();
-  const maxYear   = new Date(nowRec.date).getFullYear() + projYears;
-  const totalSpan = maxYear - minYear;
-  const tickStep  = totalSpan > 15 ? 5 : totalSpan > 8 ? 2 : 1;
+  const minYear    = new Date(allRecords[0].date).getFullYear();
+  const maxYear    = new Date(nowRec.date).getFullYear() + projYears;
+  const totalSpan  = maxYear - minYear;
+  const tickStep   = totalSpan > 15 ? 5 : totalSpan > 8 ? 2 : 1;
   const yearTickValues = [];
   for (let y = minYear; y <= maxYear; y++) {
     if ((y - minYear) % tickStep === 0 || y === maxYear) {
       yearTickValues.push(new Date(`${y}-01-01T00:00:00`).getTime());
     }
   }
+  const xMin = yearTickValues[0];
+  const xMax = projPoints[projPoints.length - 1].x;
+
+  const histMax = Math.max(...dataPoints.map(p => p.y));
 
   profileHistoricalCharts[pid] = new Chart(canvas.getContext('2d'), {
     type: 'line',
@@ -2352,7 +2356,7 @@ function renderProfileHistoricalChart(pid) {
           label: `年化 ${projectionRate}% 估計`,
           data: projPoints,
           borderColor: '#a78bfa', backgroundColor: 'transparent',
-          fill: false, tension: 0.3, borderDash: [6, 4],
+          fill: false, tension: 0.3, borderDash: [6, 4], borderWidth: 2,
           pointRadius: 0, pointHoverRadius: 6, pointHoverBackgroundColor: '#a78bfa',
         },
       ]
@@ -2369,13 +2373,16 @@ function renderProfileHistoricalChart(pid) {
       scales: {
         x: {
           type: 'linear',
+          min: xMin,
+          max: xMax,
           afterBuildTicks: axis => { axis.ticks = yearTickValues.map(v => ({ value: v })); },
-          ticks: { color: '#94a3b8', maxRotation: 0, callback: v => new Date(v).getFullYear().toString() },
+          ticks: { color: '#94a3b8', maxRotation: 0, autoSkip: false, callback: v => new Date(v).getFullYear().toString() },
           grid: { display: false }
         },
         y: {
           beginAtZero: false,
-          ticks: { stepSize: 10_000_000, color: '#94a3b8', callback: v => (v / 1_000_000).toFixed(1) + 'M' },
+          suggestedMax: histMax * 1.15,
+          ticks: { color: '#94a3b8', callback: v => (v / 1_000_000).toFixed(1) + 'M' },
           grid: { display: false }
         }
       }
@@ -2503,16 +2510,20 @@ function renderHistoricalChart() {
     projPoints.push({ x: d.getTime(), y: nowRec.value * Math.pow(1 + projectionRate / 100, y) });
   }
 
-  const minYear   = new Date(allRecords[0].date).getFullYear();
-  const maxYear   = new Date(nowRec.date).getFullYear() + projYears;
-  const totalSpan = maxYear - minYear;
-  const tickStep  = totalSpan > 15 ? 5 : totalSpan > 8 ? 2 : 1;
+  const minYear    = new Date(allRecords[0].date).getFullYear();
+  const maxYear    = new Date(nowRec.date).getFullYear() + projYears;
+  const totalSpan  = maxYear - minYear;
+  const tickStep   = totalSpan > 15 ? 5 : totalSpan > 8 ? 2 : 1;
   const yearTickValues = [];
   for (let y = minYear; y <= maxYear; y++) {
     if ((y - minYear) % tickStep === 0 || y === maxYear) {
       yearTickValues.push(new Date(`${y}-01-01T00:00:00`).getTime());
     }
   }
+  const xMin = yearTickValues[0];
+  const xMax = projPoints[projPoints.length - 1].x;
+
+  const histMax = Math.max(...dataPoints.map(p => p.y));
 
   if (historicalChart) historicalChart.destroy();
 
@@ -2541,6 +2552,7 @@ function renderHistoricalChart() {
           fill: false,
           tension: 0.3,
           borderDash: [6, 4],
+          borderWidth: 2,
           pointRadius: 0,
           pointHoverRadius: 6,
           pointHoverBackgroundColor: '#a78bfa',
@@ -2565,20 +2577,23 @@ function renderHistoricalChart() {
       scales: {
         x: {
           type: 'linear',
+          min: xMin,
+          max: xMax,
           afterBuildTicks: axis => {
             axis.ticks = yearTickValues.map(v => ({ value: v }));
           },
           ticks: {
             color: '#94a3b8',
             maxRotation: 0,
+            autoSkip: false,
             callback: v => new Date(v).getFullYear().toString(),
           },
           grid: { display: false }
         },
         y: {
           beginAtZero: false,
+          suggestedMax: histMax * 1.15,
           ticks: {
-            stepSize: 10_000_000,
             color: '#94a3b8',
             callback: v => (v / 1_000_000).toFixed(1) + 'M'
           },
