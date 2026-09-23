@@ -1,4 +1,4 @@
-const VERSION = '3.5.20';
+const VERSION = '3.5.21';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -2358,16 +2358,27 @@ function renderProfileHistoricalChart(pid) {
           borderColor: '#a78bfa', backgroundColor: 'transparent',
           fill: false, tension: 0.3, borderDash: [6, 4], borderWidth: 2,
           segment: { borderDash: () => [6, 4] },
-          pointRadius: 4,
-          pointBackgroundColor: '#a78bfa', pointBorderColor: '#fff', pointBorderWidth: 1.5,
-          pointHoverRadius: 7, pointHoverBackgroundColor: '#a78bfa',
+          pointRadius: 0, pointHoverRadius: 0,
+        },
+        {
+          label: `年化 ${projectionRate}% 估計`,
+          type: 'scatter',
+          data: projPoints.slice(1),
+          backgroundColor: '#a78bfa', borderColor: '#fff', borderWidth: 1.5,
+          pointRadius: 4, pointHoverRadius: 7,
         },
       ]
     },
     options: {
       responsive: true, maintainAspectRatio: false,
       plugins: {
-        legend: { display: true, labels: { color: '#94a3b8', font: { size: 12 }, boxWidth: 24 } },
+        legend: {
+          display: true,
+          labels: {
+            color: '#94a3b8', font: { size: 12 }, boxWidth: 24,
+            filter: (item, data) => data.datasets.findIndex(d => d.label === item.text) === item.datasetIndex,
+          }
+        },
         tooltip: { callbacks: {
           title: items => new Date(items[0].parsed.x).toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' }),
           label: item => ` ${item.dataset.label}：${formatTWD(item.parsed.y)}`,
@@ -2557,12 +2568,18 @@ function renderHistoricalChart() {
           borderDash: [6, 4],
           borderWidth: 2,
           segment: { borderDash: () => [6, 4] },
+          pointRadius: 0,
+          pointHoverRadius: 0,
+        },
+        {
+          label: `年化 ${projectionRate}% 估計`,
+          type: 'scatter',
+          data: projPoints.slice(1),
+          backgroundColor: '#a78bfa',
+          borderColor: '#fff',
+          borderWidth: 1.5,
           pointRadius: 4,
-          pointBackgroundColor: '#a78bfa',
-          pointBorderColor: '#fff',
-          pointBorderWidth: 1.5,
           pointHoverRadius: 7,
-          pointHoverBackgroundColor: '#a78bfa',
         },
       ]
     },
@@ -2572,7 +2589,10 @@ function renderHistoricalChart() {
       plugins: {
         legend: {
           display: true,
-          labels: { color: '#94a3b8', font: { size: 12 }, boxWidth: 24 }
+          labels: {
+            color: '#94a3b8', font: { size: 12 }, boxWidth: 24,
+            filter: (item, data) => data.datasets.findIndex(d => d.label === item.text) === item.datasetIndex,
+          }
         },
         tooltip: {
           callbacks: {
