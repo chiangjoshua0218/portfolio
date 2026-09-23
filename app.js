@@ -1,4 +1,4 @@
-const VERSION = '3.5.15';
+const VERSION = '3.5.16';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -63,6 +63,7 @@ function getLocalDateStr() {
 let profiles              = []; // { id, name, holdings, targetAllocations, historicalRecords }
 let activeProfileId       = 'overview';
 let historicalRecords     = []; // overview 用（所有人合計）
+let projectionRate        = 7;  // 預估年化報酬率（%），用於圖表虛線預測
 let usdRate               = 32;
 let fxRates               = {}; // 非 USD 幣別兌台幣匯率，如 { EUR: 35.2, AUD: 21.0, JPY: 0.22, GBP: 41.5 }
 let rateSnapshot          = {}; // { date, usdRate, fxRates } — 每日第一次抓到新匯率前的快照，用於計算現金匯差
@@ -2454,15 +2455,24 @@ function renderHistoricalChart() {
     return;
   }
 
-  const ctx = canvas.getContext('2d');
+  const canvasCtx = canvas.getContext('2d');
 
   const dataPoints = allRecords.map(r => ({
     x: new Date(r.date + 'T00:00:00').getTime(),
     y: r.value,
   }));
 
-  const minYear = new Date(allRecords[0].date).getFullYear();
-  const maxYear = new Date(allRecords[allRecords.length - 1].date).getFullYear();
+  // 未來 10 年估計虛線（每年一個點）
+  const projYears = 10;
+  const projPoints = [];
+  for (let y = 0; y <= projYears; y++) {
+    const d = new Date(nowRec.date + 'T00:00:00');
+    d.setFullYear(d.getFullYear() + y);
+    projPoints.push({ x: d.getTime(), y: nowRec.value * Math.pow(1 + projectionRate / 100, y) });
+  }
+
+  const minYear   = new Date(allRecords[0].date).getFullYear();
+  const maxYear   = new Date(nowRec.date).getFullYear() + projYears;
   const yearTickValues = [];
   for (let y = minYear; y <= maxYear; y++) {
     yearTickValues.push(new Date(`${y}-01-01T00:00:00`).getTime());
@@ -2470,32 +2480,49 @@ function renderHistoricalChart() {
 
   if (historicalChart) historicalChart.destroy();
 
-  historicalChart = new Chart(ctx, {
+  historicalChart = new Chart(canvasCtx, {
     type: 'line',
     data: {
-      datasets: [{
-        label: '資產總值',
-        data: dataPoints,
-        borderColor: '#3b82f6',
-        backgroundColor: 'rgba(59, 130, 246, 0.1)',
-        fill: true,
-        tension: 0.3,
-        pointRadius: allRecords.map(r => r.isNow ? 8 : 5),
-        pointBackgroundColor: allRecords.map(r => r.isNow ? '#f97316' : '#3b82f6'),
-        pointBorderColor: '#fff',
-        pointBorderWidth: 2,
-        pointHoverRadius: 10,
-      }]
+      datasets: [
+        {
+          label: '資產總值',
+          data: dataPoints,
+          borderColor: '#3b82f6',
+          backgroundColor: 'rgba(59, 130, 246, 0.1)',
+          fill: true,
+          tension: 0.3,
+          pointRadius: allRecords.map(r => r.isNow ? 8 : 5),
+          pointBackgroundColor: allRecords.map(r => r.isNow ? '#f97316' : '#3b82f6'),
+          pointBorderColor: '#fff',
+          pointBorderWidth: 2,
+          pointHoverRadius: 10,
+        },
+        {
+          label: `年化 ${projectionRate}% 估計`,
+          data: projPoints,
+          borderColor: '#a78bfa',
+          backgroundColor: 'transparent',
+          fill: false,
+          tension: 0.3,
+          borderDash: [6, 4],
+          pointRadius: 0,
+          pointHoverRadius: 6,
+          pointHoverBackgroundColor: '#a78bfa',
+        },
+      ]
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
       plugins: {
-        legend: { display: false },
+        legend: {
+          display: true,
+          labels: { color: '#94a3b8', font: { size: 12 }, boxWidth: 24 }
+        },
         tooltip: {
           callbacks: {
             title: items => new Date(items[0].parsed.x).toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' }),
-            label: ctx  => ` ${formatTWD(ctx.parsed.y)}`,
+            label: item  => ` ${item.dataset.label}：${formatTWD(item.parsed.y)}`,
           }
         }
       },
@@ -2566,6 +2593,11 @@ function deleteHistoricalRecord(date) {
   historicalRecords = historicalRecords.filter(r => r.date !== date);
   saveData();
   renderHistoricalRecordsList();
+  renderHistoricalChart();
+}
+
+function setProjectionRate(val) {
+  projectionRate = parseFloat(val) || 0;
   renderHistoricalChart();
 }
 
