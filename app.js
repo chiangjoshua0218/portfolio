@@ -1,4 +1,4 @@
-const VERSION = '3.5.12';
+const VERSION = '3.5.15';
 const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
 
 // ─── 常數設定 ───────────────────────────────────────────────────────────────
@@ -52,6 +52,12 @@ const TW_OVERSEAS_ETF_MAP = {
   '00893': 'us_stock',  // 國泰智能電動車
   '00887': 'us_stock',  // 國泰智慧電動車
 };
+
+// ─── 工具函式 ──────────────────────────────────────────────────────────────────
+function getLocalDateStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 
 // ─── 狀態 ────────────────────────────────────────────────────────────────────
 let profiles              = []; // { id, name, holdings, targetAllocations, historicalRecords }
@@ -967,7 +973,7 @@ function renderOverview() {
   });
 
   // 外幣現金：利用匯率快照計算今日匯差
-  if (rateSnapshot.date === new Date().toISOString().slice(0, 10)) {
+  if (rateSnapshot.date === getLocalDateStr()) {
     allHoldings.forEach(h => {
       if (h.category !== 'cash' || !h.currency || h.currency === 'TWD') return;
       const prevRate = h.currency === 'USD' ? rateSnapshot.usdRate : (rateSnapshot.fxRates?.[h.currency] ?? 0);
@@ -1824,7 +1830,7 @@ async function fetchExchangeRate() {
     try {
       const rate = await source();
       if (rate && rate > 1) {
-        const today = new Date().toISOString().slice(0, 10);
+        const today = getLocalDateStr();
         if (rateSnapshot.date !== today) {
           rateSnapshot = { date: today, usdRate, fxRates: { ...fxRates } };
         }
@@ -2260,7 +2266,7 @@ function saveProfileAssets(pid) {
   if (!p) return;
   const total = getProfileSubtotal(pid);
   if (total === 0) { alert('目前沒有資產數據，請先更新股價後再記錄'); return; }
-  const today    = new Date().toISOString().split('T')[0];
+  const today    = getLocalDateStr();
   const existing = p.historicalRecords.findIndex(r => r.date === today);
   if (existing >= 0) {
     if (!confirm(`${today} 已有紀錄（${formatTWD(p.historicalRecords[existing].value)}），是否覆蓋？`)) return;
@@ -2292,7 +2298,7 @@ function renderProfileHistoricalChart(pid) {
   const canvas = document.getElementById(`profileHistChart-${pid}`);
   if (!canvas) return;
 
-  const today  = new Date().toISOString().split('T')[0];
+  const today  = getLocalDateStr();
   const nowRec = { date: today, value: getProfileSubtotal(pid), isNow: true };
   const allRecords = [...p.historicalRecords, nowRec]
     .filter((r, i, arr) => arr.findIndex(x => x.date === r.date) === i)
@@ -2350,7 +2356,7 @@ function renderProfileHistoricalRecordsList(pid) {
   const container = document.getElementById(`phist-list-${pid}`);
   if (!container) return;
 
-  const today  = new Date().toISOString().split('T')[0];
+  const today  = getLocalDateStr();
   const nowRec = { date: today, value: getProfileSubtotal(pid), isNow: true };
   const allRecords = [...p.historicalRecords, nowRec]
     .filter((r, i, arr) => arr.findIndex(x => x.date === r.date) === i)
@@ -2415,7 +2421,7 @@ function saveCurrentAssets() {
     alert('目前沒有資產數據，請先更新股價後再記錄');
     return;
   }
-  const today    = new Date().toISOString().split('T')[0];
+  const today    = getLocalDateStr();
   const existing = historicalRecords.findIndex(r => r.date === today);
   if (existing >= 0) {
     if (!confirm(`${today} 已有紀錄（${formatTWD(historicalRecords[existing].value)}），是否覆蓋為目前的 ${formatTWD(total)}？`)) return;
@@ -2430,7 +2436,7 @@ function saveCurrentAssets() {
 }
 
 function getNowRecord() {
-  const today = new Date().toISOString().split('T')[0];
+  const today = getLocalDateStr();
   return { date: today, value: getCurrentTotal(), isNow: true };
 }
 
